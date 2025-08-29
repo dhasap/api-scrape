@@ -9,7 +9,7 @@ import google.generativeai as genai
 from playwright.async_api import async_playwright
 import json
 from urllib.parse import urljoin
-import playwright_aws_lambda # Menggunakan playwright-aws-lambda
+import sparticuz_chromium # Kembali menggunakan sparticuz-chromium
 from typing import List, Dict, Any, Optional
 
 # --- Konfigurasi Logging ---
@@ -59,12 +59,11 @@ async def get_page_elements(url: str):
         for attempt in range(3): # Mekanisme Retry
             try:
                 if not browser:
-                    # Install dan luncurkan browser yang kompatibel dengan Vercel
-                    await playwright_aws_lambda.install(p.chromium)
+                    # Menggunakan sparticuz-chromium
                     browser = await p.chromium.launch(
-                        executable_path=playwright_aws_lambda.chromium_executable_path(),
-                        headless=True,
-                        args=playwright_aws_lambda.get_aws_lambda_args()
+                        executable_path=await sparticuz_chromium.executable_path(),
+                        headless=sparticuz_chromium.headless,
+                        args=sparticuz_chromium.args
                     )
                 page = await browser.new_page()
                 logging.info(f"Mencoba navigasi ke {url} (Percobaan {attempt + 1})")
