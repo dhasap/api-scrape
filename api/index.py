@@ -9,7 +9,7 @@ import google.generativeai as genai
 from playwright.async_api import async_playwright
 import json
 from urllib.parse import urljoin
-import sparticuz_chromium # Kembali menggunakan sparticuz-chromium
+# sparticuz_chromium tidak lagi digunakan
 from typing import List, Dict, Any, Optional
 
 # --- Konfigurasi Logging ---
@@ -54,17 +54,15 @@ class SuggestActionRequest(BaseModel):
 
 async def get_page_elements(url: str):
     """Membuka URL dengan Playwright, mengekstrak elemen, dan mengembalikan HTML."""
+    # Menjalankan perintah instalasi browser Playwright
+    os.system("playwright install chromium")
     async with async_playwright() as p:
         browser = None
         for attempt in range(3): # Mekanisme Retry
             try:
                 if not browser:
-                    # Menggunakan sparticuz-chromium
-                    browser = await p.chromium.launch(
-                        executable_path=await sparticuz_chromium.executable_path(),
-                        headless=sparticuz_chromium.headless,
-                        args=sparticuz_chromium.args
-                    )
+                    # Meluncurkan browser Playwright secara standar
+                    browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page()
                 logging.info(f"Mencoba navigasi ke {url} (Percobaan {attempt + 1})")
                 await page.goto(url, wait_until='domcontentloaded', timeout=30000)
