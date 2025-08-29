@@ -5,4 +5,4 @@ google-generativeai
 beautifulsoup4
 python-dotenv
 lxml
-playwright-aws-lambda
+sparticuz-chromium
