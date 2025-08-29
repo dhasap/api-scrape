@@ -1,19 +1,16 @@
 {
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": {
-        "runtime": "python3.9",
-        "maxDuration": 30
-      }
-    }
-  ],
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "/api/index"
-    }
-  ]
+  "name": "ai-scrape-backend",
+  "version": "1.0.0",
+  "description": "AI Scraper backend using Node.js and Express",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.8.0",
+    "cheerio": "^1.0.0-rc.12",
+    "chrome-aws-lambda": "^10.1.0",
+    "express": "^4.19.2",
+    "playwright-core": "^1.44.0"
+  }
 }
-
