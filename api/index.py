@@ -9,7 +9,7 @@ import google.generativeai as genai
 from playwright.async_api import async_playwright
 import json
 from urllib.parse import urljoin
-import sparticuz_chromium
+import playwright_aws_lambda # Menggunakan playwright-aws-lambda
 from typing import List, Dict, Any, Optional
 
 # --- Konfigurasi Logging ---
@@ -24,10 +24,8 @@ try:
     AI_MODEL_NAME = os.environ.get("AI_MODEL_NAME", "gemini-1.5-flash")
 except ValueError as e:
     logging.critical(f"Gagal mengonfigurasi Gemini: {e}")
-    # Jika API key tidak ada, aplikasi tidak bisa berjalan.
-    # Kita bisa raise exception di sini atau membiarkannya gagal saat dipanggil.
-    # Untuk Vercel, lebih baik log error dan biarkan endpoint gagal dengan pesan jelas.
-    AI_MODEL_NAME = "gemini-1.5-flash" # Fallback
+    # Fallback jika API key tidak ada
+    AI_MODEL_NAME = "gemini-1.5-flash"
 
 app = FastAPI()
 
@@ -61,10 +59,12 @@ async def get_page_elements(url: str):
         for attempt in range(3): # Mekanisme Retry
             try:
                 if not browser:
+                    # Install dan luncurkan browser yang kompatibel dengan Vercel
+                    await playwright_aws_lambda.install(p.chromium)
                     browser = await p.chromium.launch(
-                        executable_path=await sparticuz_chromium.executable_path(),
-                        headless=sparticuz_chromium.headless,
-                        args=sparticuz_chromium.args
+                        executable_path=playwright_aws_lambda.chromium_executable_path(),
+                        headless=True,
+                        args=playwright_aws_lambda.get_aws_lambda_args()
                     )
                 page = await browser.new_page()
                 logging.info(f"Mencoba navigasi ke {url} (Percobaan {attempt + 1})")
@@ -201,3 +201,4 @@ async def http_scrape(request: ScrapeRequest):
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
+
