@@ -1,13 +1,8 @@
 {
   "functions": {
     "api/index.py": {
-      "memory": 1024,
+      "runtime": "python3.9",
       "maxDuration": 30
-    }
-  },
-  "build": {
-    "env": {
-      "PLAYWRIGHT_BROWSERS_PATH": "0"
     }
   },
   "rewrites": [
