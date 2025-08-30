@@ -1,4 +1,4 @@
-// api/index.js (v2.4 - Peningkatan Stabilitas & Logging)
+// api/index.js (v2.6 - Enhanced Logging)
 const express = require('express');
 const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (v2.4)...');
+console.log('Menginisialisasi server (v2.6)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -18,24 +18,73 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
-// --- Logika Inti ---
+// --- Fungsi Analisa Halaman Cerdas ---
+function analyzePageContent(html, currentUrl) {
+    console.log("[ANALYSIS] Memulai analisa konten halaman...");
+    const $ = cheerio.load(html);
+    const pageData = {
+        current_url: currentUrl,
+        title: $('title').text() || 'No Title',
+        html: html,
+        search_results: [],
+        pagination: {},
+        other_elements: []
+    };
 
+    // Heuristik untuk mendeteksi hasil pencarian
+    const searchResultItems = $('div.list-update_item, article.bs, div.utao'); 
+    pageData.search_results = searchResultItems.map((i, el) => {
+        const element = $(el);
+        const titleElement = element.find('h3, .title, .tt');
+        const linkElement = element.find('a').first();
+        if (titleElement.length && linkElement.length) {
+            return {
+                title: titleElement.text().trim(),
+                url: new URL(linkElement.attr('href'), currentUrl).href
+            };
+        }
+        return null;
+    }).get().filter(item => item !== null); // .get() mengubahnya jadi array, filter menghapus null
+    console.log(`[ANALYSIS] Ditemukan ${pageData.search_results.length} item hasil pencarian.`);
+
+    // Heuristik untuk mendeteksi tombol "Next"
+    const nextLink = $('a.next.page-numbers, a:contains("Next"), a[rel="next"]').first();
+    if (nextLink.length > 0) {
+        pageData.pagination.next_page_url = new URL(nextLink.attr('href'), currentUrl).href;
+        console.log("[ANALYSIS] Ditemukan link halaman berikutnya.");
+    }
+    
+    // Ambil semua elemen interaktif lainnya
+    $('[data-ai-id]').each((i, el) => {
+        const element = $(el);
+        pageData.other_elements.push({
+            ai_id: element.attr('data-ai-id'),
+            tag: el.tagName.toLowerCase(),
+            text: element.text().trim(),
+            href: element.is('a') ? new URL(element.attr('href'), currentUrl).href : null,
+            placeholder: element.is('input') ? element.attr('placeholder') : null,
+        });
+    });
+    console.log(`[ANALYSIS] Ditemukan ${pageData.other_elements.length} elemen interaktif lainnya.`);
+
+    return pageData;
+}
+
+
+// --- Logika Inti ---
 async function getPageElements(url) {
     let browser = null;
     console.log(`[NAVIGATE] Memulai proses untuk URL: ${url}`);
     try {
         console.log(`[NAVIGATE] Mencari path executable Chromium...`);
         const executablePath = await chromium.executablePath();
-        
-        if (!executablePath) {
-             throw new Error("Path executable Chromium tidak ditemukan.");
-        }
+        if (!executablePath) throw new Error("Path executable Chromium tidak ditemukan.");
         console.log(`[NAVIGATE] Path ditemukan. Meluncurkan browser...`);
         
         browser = await playwright.chromium.launch({
             args: chromium.args,
             executablePath: executablePath,
-            headless: true, // Wajib true untuk lingkungan serverless
+            headless: true,
             ignoreHTTPSErrors: true,
         });
         
@@ -44,39 +93,21 @@ async function getPageElements(url) {
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         });
         const page = await context.newPage();
-        
-        // Menaikkan timeout default untuk navigasi
-        page.setDefaultNavigationTimeout(60000); // 60 detik
+        page.setDefaultNavigationTimeout(60000);
 
         console.log(`[NAVIGATE] Membuka halaman: ${url}`);
         await page.goto(url, { waitUntil: 'networkidle' });
         console.log(`[NAVIGATE] Halaman berhasil dimuat.`);
 
         const htmlWithIds = await page.evaluate(() => {
-            const elements = document.querySelectorAll('a, button, input[type="submit"], input[type="text"], input[type="search"]');
-            elements.forEach((el, index) => el.setAttribute('data-ai-id', `ai-id-${index}`));
+            document.querySelectorAll('a, button, input').forEach((el, index) => el.setAttribute('data-ai-id', `ai-id-${index}`));
             return document.documentElement.outerHTML;
         });
-
-        const currentUrl = page.url();
-        const $ = cheerio.load(htmlWithIds);
-        const title = $('title').text() || 'No Title';
+        console.log(`[NAVIGATE] Berhasil menyuntikkan ID dan mengambil HTML.`);
         
-        const elements = [];
-        $('[data-ai-id]').each((i, el) => {
-            const element = $(el);
-            const href = element.is('a') ? element.attr('href') : null;
-            elements.push({
-                ai_id: element.attr('data-ai-id'),
-                tag: el.tagName.toLowerCase(),
-                text: element.text().trim(),
-                href: href ? new URL(href, currentUrl).href : null,
-                placeholder: element.is('input') ? element.attr('placeholder') : null,
-            });
-        });
-
-        console.log(`[NAVIGATE] Berhasil memproses ${url}, ditemukan ${elements.length} elemen.`);
-        return { current_url: currentUrl, title, elements, html: htmlWithIds };
+        const analyzedData = analyzePageContent(htmlWithIds, page.url());
+        
+        return analyzedData;
 
     } catch (error) {
         console.error(`[NAVIGATE] Gagal total saat memproses ${url}:`, error);
@@ -90,69 +121,48 @@ async function getPageElements(url) {
 }
 
 function getAiSuggestion(goal, current_url, elements) {
+    console.log(`[AI-SUGGEST] Memulai proses untuk tujuan: "${goal}"`);
     const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
     const elementMapStr = JSON.stringify(elements, null, 2);
+    const prompt = `Anda adalah asisten navigasi. Tujuan: "${goal}". URL saat ini: "${current_url}". Berdasarkan elemen ini: ${elementMapStr.substring(0, 30000)}, tentukan aksi terbaik berikutnya (navigate, scrape, atau fail) dalam format JSON: {"action": "...", "details": {"url": "...", "reason": "..."}}`;
     
-    const prompt = `
-    Anda adalah asisten navigasi web cerdas.
-    Tujuan utama: "${goal}"
-    URL saat ini: "${current_url}"
-    Berikut adalah daftar elemen interaktif yang ada di halaman dalam format JSON:
-    ${elementMapStr.substring(0, 30000)}
-    Berdasarkan tujuan utama, URL saat ini, dan daftar elemen, tentukan SATU aksi terbaik berikutnya.
-    Pilihannya adalah: "navigate", "scrape", atau "fail".
-    Berikan jawaban dalam format JSON yang VALID dengan struktur:
-    {
-      "action": "pilihan_aksi",
-      "details": { "url": "url_tujuan", "reason": "Alasan singkat." }
-    }`;
-
-    console.log(`[AI-SUGGEST] Meminta saran AI untuk tujuan: ${goal}`);
+    console.log(`[AI-SUGGEST] Mengirim prompt ke Gemini...`);
     return model.generateContent(prompt)
-        .then(result => {
-            const jsonText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+        .then(r => {
+            console.log(`[AI-SUGGEST] Menerima respons dari Gemini.`);
+            const jsonText = r.response.text().replace(/```json|```/g, '').trim();
             return JSON.parse(jsonText);
         })
-        .catch(error => {
-            console.error(`[AI-SUGGEST] Gagal memberikan saran:`, error);
-            return { action: "fail", details: { reason: `Error pada AI: ${error.message}` } };
+        .catch(e => {
+            console.error(`[AI-SUGGEST] Gagal mendapatkan saran dari AI:`, e);
+            return { action: "fail", details: { reason: e.message } };
         });
 }
 
 function scrapeDetailsWithAi(goal, html_content) {
+    console.log(`[AI-SCRAPE] Memulai proses scraping untuk tujuan: "${goal}"`);
     const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
     const $ = cheerio.load(html_content);
     $('script, style').remove();
     const cleanHtml = $('body').html();
+    const prompt = `Anda ahli scraper. Tujuan: "${goal}". Ekstrak data dari HTML ini ke format JSON (title, author, genre, status, synopsis, chapters): --- ${cleanHtml.substring(0, 40000)} ---`;
     
-    const prompt = `
-    Anda adalah ahli scraper. Tujuan: "${goal}".
-    Dari HTML berikut, ekstrak semua informasi relevan ke dalam format JSON yang VALID, sesuai contoh ini:
-    {
-      "title": "Judul Komik", "author": "Nama Author", "genre": ["Genre 1"], "status": "Ongoing", "synopsis": "Paragraf sinopsis...",
-      "chapters": [{ "chapter_title": "Chapter 1", "url": "https://url-chapter.com" }]
-    }
-    Ekstrak SEMUA chapter. Jika informasi tidak ada, gunakan null.
-    HTML: --- ${cleanHtml.substring(0, 40000)} ---
-    `;
-    
-    console.log(`[AI-SCRAPE] Memulai scraping dengan AI untuk tujuan: ${goal}`);
+    console.log(`[AI-SCRAPE] Mengirim prompt ke Gemini...`);
     return model.generateContent(prompt)
-        .then(result => {
-            const jsonText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
-            if (!jsonText.startsWith('{')) {
-                throw new Error(`Respons AI tidak valid (bukan JSON).`);
-            }
+        .then(r => {
+            console.log(`[AI-SCRAPE] Menerima respons dari Gemini.`);
+            const jsonText = r.response.text().replace(/```json|```/g, '').trim();
+            if (!jsonText.startsWith('{')) throw new Error(`Respons AI tidak valid (bukan JSON).`);
             return JSON.parse(jsonText);
         })
-        .catch(error => {
-            console.error(`[AI-SCRAPE] Gagal mengekstrak detail:`, error);
-            throw new Error(`AI gagal mengekstrak detail: ${error.message}`);
+        .catch(e => {
+            console.error(`[AI-SCRAPE] Gagal mengekstrak detail dari AI:`, e);
+            throw new Error(`AI gagal mengekstrak detail: ${e.message}`);
         });
 }
 
-// --- Endpoint API ---
 
+// --- Endpoint API ---
 app.post("/api/navigate", async (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ status: "error", message: "URL diperlukan" });
@@ -165,7 +175,7 @@ app.post("/api/navigate", async (req, res) => {
 });
 
 app.post("/api/suggest_action", async (req, res) => {
-    const { goal, current_url, elements } = req.body;
+    const { goal, current_url, elements } = req.body; 
     if (!goal || !current_url || !elements) return res.status(400).json({ status: "error", message: "Parameter tidak lengkap" });
     try {
         const suggestion = await getAiSuggestion(goal, current_url, elements);
