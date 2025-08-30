@@ -3,7 +3,7 @@
     {
       "src": "api/index.js",
       "use": "@vercel/node",
-      "memory": 3072,
+      "memory": 1024,
       "maxDuration": 60
     }
   ],
