@@ -1,4 +1,4 @@
-// api/index.js (v2.1 - Final Headless Fix)
+// api/index.js (v2.3 - Schema Guided Scraping)
 const express = require('express');
 const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (v2.1)...');
+console.log('Menginisialisasi server (v2.3)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -27,7 +27,6 @@ async function getPageElements(url) {
         browser = await playwright.chromium.launch({
             args: chromium.args,
             executablePath: await chromium.executablePath(),
-            // PERBAIKAN FINAL: Secara eksplisit mengatur headless ke true (boolean)
             headless: true,
             ignoreHTTPSErrors: true, 
         });
@@ -76,8 +75,6 @@ async function getPageElements(url) {
     }
 }
 
-// ... Fungsi getAiSuggestion dan scrapeDetailsWithAi tetap sama ...
-
 function getAiSuggestion(goal, current_url, elements) {
     const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
     const elementMapStr = JSON.stringify(elements, null, 2);
@@ -110,20 +107,62 @@ function getAiSuggestion(goal, current_url, elements) {
 
 function scrapeDetailsWithAi(goal, html_content) {
     const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
+    
+    // Membersihkan HTML dari script dan style tag untuk mengurangi token
     const $ = cheerio.load(html_content);
     $('script, style').remove();
-    const cleanText = $('body').text().replace(/\s\s+/g, ' ').trim();
-    
+    const cleanHtml = $('body').html(); // Mengambil HTML bersih dari body
+
+    // PERUBAHAN: Prompt dibuat lebih spesifik dengan contoh format JSON
     const prompt = `
-    Anda adalah ahli scraper. Tujuan: "${goal}".
-    Dari teks konten berikut, ekstrak semua informasi relevan ke dalam format JSON yang VALID.
-    Teks konten: --- ${cleanText.substring(0, 50000)} ---
-    Pastikan JSON 100% valid. Jika tidak ada, gunakan null.`;
+    Anda adalah ahli scraper yang sangat teliti. Tujuan scraping adalah: "${goal}".
+    Dari HTML berikut, ekstrak semua informasi relevan ke dalam format JSON yang VALID dan KONSISTEN.
+
+    --- CONTOH FORMAT JSON YANG DIINGINKAN ---
+    {
+      "title": "Judul Komik",
+      "author": "Nama Author",
+      "genre": ["Genre 1", "Genre 2"],
+      "type": "Tipe Komik (e.g., Manhwa)",
+      "status": "Status (e.g., Ongoing)",
+      "release_date": "Tanggal Rilis",
+      "rating": "Skor Rating",
+      "synopsis": "Paragraf sinopsis...",
+      "chapters": [
+        {
+          "chapter_title": "Chapter 1",
+          "release_date": "Tanggal Rilis Chapter",
+          "url": "https://url-ke-chapter.com"
+        },
+        {
+          "chapter_title": "Chapter 2",
+          "release_date": "Tanggal Rilis Chapter",
+          "url": "https://url-ke-chapter.com"
+        }
+      ]
+    }
+    -----------------------------------------
+
+    ATURAN PENTING:
+    1. Ikuti format contoh di atas dengan SANGAT TELITI.
+    2. Pastikan JSON yang Anda hasilkan 100% valid. Perhatikan penggunaan koma (,) di antara item dalam daftar chapters.
+    3. Ekstrak SEMUA chapter yang tersedia dalam HTML.
+    4. Jika suatu informasi tidak dapat ditemukan, gunakan null sebagai nilainya.
+
+    HTML untuk di-scrape:
+    ---
+    ${cleanHtml.substring(0, 40000)}
+    ---
+    `;
     
     console.log(`Memulai scraping dengan AI untuk tujuan: ${goal}`);
     return model.generateContent(prompt)
         .then(result => {
             const jsonText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+            if (!jsonText.startsWith('{')) {
+                console.error(`Respons AI tidak valid (bukan JSON): ${jsonText}`);
+                throw new Error(`AI gagal mengekstrak detail, respons tidak valid.`);
+            }
             return JSON.parse(jsonText);
         })
         .catch(error => {
