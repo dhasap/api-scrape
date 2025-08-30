@@ -1,4 +1,4 @@
-// api/index.js (v2.0 - Stabil & Anti-Bot)
+// api/index.js (v2.1 - Final Headless Fix)
 const express = require('express');
 const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (v2.0)...');
+console.log('Menginisialisasi server (v2.1)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -24,22 +24,20 @@ async function getPageElements(url) {
     let browser = null;
     console.log(`Memulai navigasi ke: ${url}`);
     try {
-        // SOLUSI: Konfigurasi browser yang lebih tangguh sesuai rekomendasi
         browser = await playwright.chromium.launch({
             args: chromium.args,
             executablePath: await chromium.executablePath(),
-            headless: chromium.headless,
-            ignoreHTTPSErrors: true, // Abaikan error sertifikat HTTPS
+            // PERBAIKAN FINAL: Secara eksplisit mengatur headless ke true (boolean)
+            headless: true,
+            ignoreHTTPSErrors: true, 
         });
 
-        // SOLUSI: Menyamarkan scraper agar tidak terdeteksi Cloudflare
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         });
         const page = await context.newPage();
 
         console.log(`Mencoba membuka halaman: ${url}`);
-        // SOLUSI: Menunggu hingga semua koneksi jaringan selesai (penting untuk Cloudflare)
         await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
 
         const htmlWithIds = await page.evaluate(() => {
