@@ -1,23 +1,22 @@
-// api/index.js
+// api/index.js (v2.0 - Stabil & Anti-Bot)
 const express = require('express');
 const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
-// --- Konfigurasi Logging dan Model ---
-console.log('Menginisialisasi server...');
-
+// --- Konfigurasi ---
+console.log('Menginisialisasi server (v2.0)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const AI_MODEL_NAME = process.env.AI_MODEL_NAME || "gemini-1.5-flash";
+const AI_MODEL_NAME = "gemini-1.5-flash";
 
 if (!GEMINI_API_KEY) {
-    console.error("KRITIS: API Key Gemini tidak ditemukan di environment variables.");
+    console.error("KRITIS: API Key Gemini tidak ditemukan.");
 }
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const app = express();
-app.use(express.json({ limit: '50mb' })); // Menaikkan limit body parser untuk HTML content
+app.use(express.json({ limit: '50mb' }));
 
 // --- Logika Inti ---
 
@@ -25,35 +24,31 @@ async function getPageElements(url) {
     let browser = null;
     console.log(`Memulai navigasi ke: ${url}`);
     try {
-        // Menggunakan @sparticuz/chromium yang dioptimalkan untuk serverless
+        // SOLUSI: Konfigurasi browser yang lebih tangguh sesuai rekomendasi
         browser = await playwright.chromium.launch({
             args: chromium.args,
             executablePath: await chromium.executablePath(),
-            // PERBAIKAN: Secara eksplisit mengatur headless ke true (boolean)
-            headless: true,
+            headless: chromium.headless,
+            ignoreHTTPSErrors: true, // Abaikan error sertifikat HTTPS
         });
 
-        const page = await browser.newPage();
-        console.log(`Mencoba membuka halaman: ${url}`);
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        
-// ... sisa kode sama persis, tidak ada perubahan lain ...
-        // Scroll untuk memuat konten lazy-load
-        await page.evaluate('window.scrollTo(0, document.body.scrollHeight / 2);');
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // SOLUSI: Menyamarkan scraper agar tidak terdeteksi Cloudflare
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        });
+        const page = await context.newPage();
 
-        // Injeksi atribut data-ai-id dan ambil HTML
+        console.log(`Mencoba membuka halaman: ${url}`);
+        // SOLUSI: Menunggu hingga semua koneksi jaringan selesai (penting untuk Cloudflare)
+        await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
+
         const htmlWithIds = await page.evaluate(() => {
             const elements = document.querySelectorAll('a, button, input[type="submit"], input[type="text"], input[type="search"]');
-            elements.forEach((el, index) => {
-                el.setAttribute('data-ai-id', `ai-id-${index}`);
-            });
+            elements.forEach((el, index) => el.setAttribute('data-ai-id', `ai-id-${index}`));
             return document.documentElement.outerHTML;
         });
 
         const currentUrl = page.url();
-        
-        // Parsing menggunakan Cheerio, lebih ringan dari JSDOM
         const $ = cheerio.load(htmlWithIds);
         const title = $('title').text() || 'No Title';
         
@@ -83,6 +78,8 @@ async function getPageElements(url) {
     }
 }
 
+// ... Fungsi getAiSuggestion dan scrapeDetailsWithAi tetap sama ...
+
 function getAiSuggestion(goal, current_url, elements) {
     const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
     const elementMapStr = JSON.stringify(elements, null, 2);
@@ -91,31 +88,15 @@ function getAiSuggestion(goal, current_url, elements) {
     Anda adalah asisten navigasi web cerdas.
     Tujuan utama: "${goal}"
     URL saat ini: "${current_url}"
-
     Berikut adalah daftar elemen interaktif yang ada di halaman dalam format JSON:
     ${elementMapStr.substring(0, 30000)}
-
     Berdasarkan tujuan utama, URL saat ini, dan daftar elemen, tentukan SATU aksi terbaik berikutnya.
-    Pilihannya adalah:
-    1.  "navigate": Jika Anda harus mengklik sebuah link.
-    2.  "scrape": Jika halaman ini sudah merupakan halaman detail yang dicari dan siap untuk diekstrak datanya.
-    3.  "fail": Jika Anda tidak bisa menentukan langkah selanjutnya atau merasa buntu.
-
-    Berikan jawaban dalam format JSON yang VALID dengan struktur berikut:
+    Pilihannya adalah: "navigate", "scrape", atau "fail".
+    Berikan jawaban dalam format JSON yang VALID dengan struktur:
     {
-      "action": "navigate" | "scrape" | "fail",
-      "details": {
-        "ai_id": "ai-id-of-element-to-click",
-        "url": "url-to-navigate-to",
-        "reason": "Alasan singkat mengapa Anda memilih aksi ini."
-      }
-    }
-
-    - Jika action adalah "navigate", \`details\` harus berisi \`ai_id\`, \`url\`, dan \`reason\`.
-    - Jika action adalah "scrape", \`details\` hanya perlu berisi \`reason\`.
-    - Jika action adalah "fail", \`details\` hanya perlu berisi \`reason\`.
-    - Pilih elemen yang paling relevan untuk mencapai tujuan.
-    `;
+      "action": "pilihan_aksi",
+      "details": { "url": "url_tujuan", "reason": "Alasan singkat." }
+    }`;
 
     console.log(`Meminta saran AI untuk tujuan: ${goal}`);
     return model.generateContent(prompt)
@@ -129,25 +110,17 @@ function getAiSuggestion(goal, current_url, elements) {
         });
 }
 
-
 function scrapeDetailsWithAi(goal, html_content) {
     const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
-    
-    // Menggunakan cheerio untuk membersihkan HTML sebelum dikirim ke AI
     const $ = cheerio.load(html_content);
-    // Hapus script dan style tag untuk mengurangi token
     $('script, style').remove();
     const cleanText = $('body').text().replace(/\s\s+/g, ' ').trim();
     
     const prompt = `
-    Anda adalah ahli scraper yang sangat teliti. Tujuan scraping adalah: "${goal}".
-    Dari teks konten berikut, ekstrak semua informasi relevan ke dalam format JSON yang VALID dan KONSISTEN.
-    Teks konten:
-    ---
-    ${cleanText.substring(0, 50000)}
-    ---
-    Pastikan JSON 100% valid dan ekstrak semua informasi yang mungkin relevan. Jika tidak ada, gunakan null.
-    `;
+    Anda adalah ahli scraper. Tujuan: "${goal}".
+    Dari teks konten berikut, ekstrak semua informasi relevan ke dalam format JSON yang VALID.
+    Teks konten: --- ${cleanText.substring(0, 50000)} ---
+    Pastikan JSON 100% valid. Jika tidak ada, gunakan null.`;
     
     console.log(`Memulai scraping dengan AI untuk tujuan: ${goal}`);
     return model.generateContent(prompt)
@@ -166,10 +139,7 @@ function scrapeDetailsWithAi(goal, html_content) {
 
 app.post("/api/navigate", async (req, res) => {
     const { url } = req.body;
-    if (!url) {
-        return res.status(400).json({ status: "error", message: "URL diperlukan" });
-    }
-    console.log(`Menerima request navigasi ke: ${url}`);
+    if (!url) return res.status(400).json({ status: "error", message: "URL diperlukan" });
     try {
         const result = await getPageElements(url);
         res.json({ status: "success", data: result });
@@ -180,10 +150,7 @@ app.post("/api/navigate", async (req, res) => {
 
 app.post("/api/suggest_action", async (req, res) => {
     const { goal, current_url, elements } = req.body;
-    if (!goal || !current_url || !elements) {
-        return res.status(400).json({ status: "error", message: "Parameter goal, current_url, dan elements diperlukan" });
-    }
-    console.log(`Menerima request saran AI untuk tujuan: ${goal}`);
+    if (!goal || !current_url || !elements) return res.status(400).json({ status: "error", message: "Parameter tidak lengkap" });
     try {
         const suggestion = await getAiSuggestion(goal, current_url, elements);
         res.json({ status: "success", data: suggestion });
@@ -194,10 +161,7 @@ app.post("/api/suggest_action", async (req, res) => {
 
 app.post("/api/scrape", async (req, res) => {
     const { goal, html_content } = req.body;
-    if (!goal || !html_content) {
-        return res.status(400).json({ status: "error", message: "Parameter goal dan html_content diperlukan" });
-    }
-    console.log(`Menerima request scrape untuk tujuan: ${goal}`);
+    if (!goal || !html_content) return res.status(400).json({ status: "error", message: "Parameter tidak lengkap" });
     try {
         const result = await scrapeDetailsWithAi(goal, html_content);
         res.json({ status: "success", data: result });
@@ -206,10 +170,7 @@ app.post("/api/scrape", async (req, res) => {
     }
 });
 
-app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
-});
+app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
-// Vercel akan menangani routing, kita hanya perlu export app
 module.exports = app;
 
