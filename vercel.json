@@ -1,25 +1,15 @@
 {
-  "version": 2,
   "builds": [
     {
       "src": "api/index.js",
-      "use": "@vercel/node",
-      "config": {
-        "awsLambdaHandler": "api/index.js"
-      }
+      "use": "@vercel/node"
     }
   ],
   "rewrites": [
     {
-      "source": "/api/(.*)",
+      "source": "/api/:path*",
       "destination": "/api/index.js"
     }
-  ],
-  "functions": {
-    "api/index.js": {
-      "memory": 1638,
-      "maxDuration": 45
-    }
-  }
+  ]
 }
 
