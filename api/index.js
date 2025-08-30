@@ -1,11 +1,14 @@
 // api/index.js
 const express = require('express');
 const playwright = require('playwright-core');
-const chromium = require('chrome-aws-lambda');
+// PERBAIKAN: Menggunakan library yang benar sesuai package.json
+const chromium = require('@sparticuz/chromium');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi Logging dan Model ---
+// ... sisa kode sama persis ...
+// ... tidak ada perubahan lain di bawah ini ...
 console.log('Menginisialisasi server...');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -25,10 +28,10 @@ async function getPageElements(url) {
     let browser = null;
     console.log(`Memulai navigasi ke: ${url}`);
     try {
-        // Menggunakan chrome-aws-lambda yang dioptimalkan untuk serverless
+        // Menggunakan @sparticuz/chromium yang dioptimalkan untuk serverless
         browser = await playwright.chromium.launch({
             args: chromium.args,
-            executablePath: await chromium.executablePath,
+            executablePath: await chromium.executablePath(), // Perhatikan ada () di sini
             headless: chromium.headless,
         });
 
@@ -210,3 +213,4 @@ app.get("/api/health", (req, res) => {
 
 // Vercel akan menangani routing, kita hanya perlu export app
 module.exports = app;
+
