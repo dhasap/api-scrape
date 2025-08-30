@@ -1,14 +1,14 @@
 {
   "name": "api-scrape-backend",
-  "version": "2.0.0",
-  "description": "Backend for AI Scraper (Stable)",
+  "version": "1.0.0",
+  "description": "Backend for AI Scraper",
   "main": "api/index.js",
   "scripts": {
     "start": "node api/index.js"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "@google/generative-ai": "^0.21.0",
+    "@google/generative-ai": "0.11.1",
     "dotenv": "^16.4.5",
     "playwright-core": "^1.45.3",
     "@sparticuz/chromium": "^126.0.0",
