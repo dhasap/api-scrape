@@ -1,4 +1,4 @@
-// api/index.js (v2.3 - Schema Guided Scraping)
+// api/index.js (v2.4 - Peningkatan Stabilitas & Logging)
 const express = require('express');
 const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (v2.3)...');
+console.log('Menginisialisasi server (v2.4)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -22,22 +22,35 @@ app.use(express.json({ limit: '50mb' }));
 
 async function getPageElements(url) {
     let browser = null;
-    console.log(`Memulai navigasi ke: ${url}`);
+    console.log(`[NAVIGATE] Memulai proses untuk URL: ${url}`);
     try {
+        console.log(`[NAVIGATE] Mencari path executable Chromium...`);
+        const executablePath = await chromium.executablePath();
+        
+        if (!executablePath) {
+             throw new Error("Path executable Chromium tidak ditemukan.");
+        }
+        console.log(`[NAVIGATE] Path ditemukan. Meluncurkan browser...`);
+        
         browser = await playwright.chromium.launch({
             args: chromium.args,
-            executablePath: await chromium.executablePath(),
-            headless: true,
-            ignoreHTTPSErrors: true, 
+            executablePath: executablePath,
+            headless: true, // Wajib true untuk lingkungan serverless
+            ignoreHTTPSErrors: true,
         });
-
+        
+        console.log(`[NAVIGATE] Browser berhasil diluncurkan.`);
         const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         });
         const page = await context.newPage();
+        
+        // Menaikkan timeout default untuk navigasi
+        page.setDefaultNavigationTimeout(60000); // 60 detik
 
-        console.log(`Mencoba membuka halaman: ${url}`);
-        await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
+        console.log(`[NAVIGATE] Membuka halaman: ${url}`);
+        await page.goto(url, { waitUntil: 'networkidle' });
+        console.log(`[NAVIGATE] Halaman berhasil dimuat.`);
 
         const htmlWithIds = await page.evaluate(() => {
             const elements = document.querySelectorAll('a, button, input[type="submit"], input[type="text"], input[type="search"]');
@@ -62,14 +75,15 @@ async function getPageElements(url) {
             });
         });
 
-        console.log(`Berhasil memproses ${url}, ditemukan ${elements.length} elemen.`);
+        console.log(`[NAVIGATE] Berhasil memproses ${url}, ditemukan ${elements.length} elemen.`);
         return { current_url: currentUrl, title, elements, html: htmlWithIds };
 
     } catch (error) {
-        console.error(`Gagal memproses ${url}:`, error);
+        console.error(`[NAVIGATE] Gagal total saat memproses ${url}:`, error);
         throw new Error(`Gagal membuka URL: ${error.message}`);
     } finally {
         if (browser) {
+            console.log(`[NAVIGATE] Menutup browser.`);
             await browser.close();
         }
     }
@@ -93,84 +107,49 @@ function getAiSuggestion(goal, current_url, elements) {
       "details": { "url": "url_tujuan", "reason": "Alasan singkat." }
     }`;
 
-    console.log(`Meminta saran AI untuk tujuan: ${goal}`);
+    console.log(`[AI-SUGGEST] Meminta saran AI untuk tujuan: ${goal}`);
     return model.generateContent(prompt)
         .then(result => {
             const jsonText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
             return JSON.parse(jsonText);
         })
         .catch(error => {
-            console.error(`AI gagal memberikan saran:`, error);
+            console.error(`[AI-SUGGEST] Gagal memberikan saran:`, error);
             return { action: "fail", details: { reason: `Error pada AI: ${error.message}` } };
         });
 }
 
 function scrapeDetailsWithAi(goal, html_content) {
     const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
-    
-    // Membersihkan HTML dari script dan style tag untuk mengurangi token
     const $ = cheerio.load(html_content);
     $('script, style').remove();
-    const cleanHtml = $('body').html(); // Mengambil HTML bersih dari body
-
-    // PERUBAHAN: Prompt dibuat lebih spesifik dengan contoh format JSON
+    const cleanHtml = $('body').html();
+    
     const prompt = `
-    Anda adalah ahli scraper yang sangat teliti. Tujuan scraping adalah: "${goal}".
-    Dari HTML berikut, ekstrak semua informasi relevan ke dalam format JSON yang VALID dan KONSISTEN.
-
-    --- CONTOH FORMAT JSON YANG DIINGINKAN ---
+    Anda adalah ahli scraper. Tujuan: "${goal}".
+    Dari HTML berikut, ekstrak semua informasi relevan ke dalam format JSON yang VALID, sesuai contoh ini:
     {
-      "title": "Judul Komik",
-      "author": "Nama Author",
-      "genre": ["Genre 1", "Genre 2"],
-      "type": "Tipe Komik (e.g., Manhwa)",
-      "status": "Status (e.g., Ongoing)",
-      "release_date": "Tanggal Rilis",
-      "rating": "Skor Rating",
-      "synopsis": "Paragraf sinopsis...",
-      "chapters": [
-        {
-          "chapter_title": "Chapter 1",
-          "release_date": "Tanggal Rilis Chapter",
-          "url": "https://url-ke-chapter.com"
-        },
-        {
-          "chapter_title": "Chapter 2",
-          "release_date": "Tanggal Rilis Chapter",
-          "url": "https://url-ke-chapter.com"
-        }
-      ]
+      "title": "Judul Komik", "author": "Nama Author", "genre": ["Genre 1"], "status": "Ongoing", "synopsis": "Paragraf sinopsis...",
+      "chapters": [{ "chapter_title": "Chapter 1", "url": "https://url-chapter.com" }]
     }
-    -----------------------------------------
-
-    ATURAN PENTING:
-    1. Ikuti format contoh di atas dengan SANGAT TELITI.
-    2. Pastikan JSON yang Anda hasilkan 100% valid. Perhatikan penggunaan koma (,) di antara item dalam daftar chapters.
-    3. Ekstrak SEMUA chapter yang tersedia dalam HTML.
-    4. Jika suatu informasi tidak dapat ditemukan, gunakan null sebagai nilainya.
-
-    HTML untuk di-scrape:
-    ---
-    ${cleanHtml.substring(0, 40000)}
-    ---
+    Ekstrak SEMUA chapter. Jika informasi tidak ada, gunakan null.
+    HTML: --- ${cleanHtml.substring(0, 40000)} ---
     `;
     
-    console.log(`Memulai scraping dengan AI untuk tujuan: ${goal}`);
+    console.log(`[AI-SCRAPE] Memulai scraping dengan AI untuk tujuan: ${goal}`);
     return model.generateContent(prompt)
         .then(result => {
             const jsonText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
             if (!jsonText.startsWith('{')) {
-                console.error(`Respons AI tidak valid (bukan JSON): ${jsonText}`);
-                throw new Error(`AI gagal mengekstrak detail, respons tidak valid.`);
+                throw new Error(`Respons AI tidak valid (bukan JSON).`);
             }
             return JSON.parse(jsonText);
         })
         .catch(error => {
-            console.error(`AI gagal mengekstrak detail:`, error);
+            console.error(`[AI-SCRAPE] Gagal mengekstrak detail:`, error);
             throw new Error(`AI gagal mengekstrak detail: ${error.message}`);
         });
 }
-
 
 // --- Endpoint API ---
 
