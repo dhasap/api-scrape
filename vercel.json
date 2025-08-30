@@ -1,10 +1,12 @@
 {
-  "functions": {
-    "api/index.js": {
+  "builds": [
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node",
       "memory": 3072,
       "maxDuration": 60
     }
-  },
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
