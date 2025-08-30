@@ -1,14 +1,11 @@
 // api/index.js
 const express = require('express');
 const playwright = require('playwright-core');
-// PERBAIKAN: Menggunakan library yang benar sesuai package.json
 const chromium = require('@sparticuz/chromium');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi Logging dan Model ---
-// ... sisa kode sama persis ...
-// ... tidak ada perubahan lain di bawah ini ...
 console.log('Menginisialisasi server...');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -31,14 +28,16 @@ async function getPageElements(url) {
         // Menggunakan @sparticuz/chromium yang dioptimalkan untuk serverless
         browser = await playwright.chromium.launch({
             args: chromium.args,
-            executablePath: await chromium.executablePath(), // Perhatikan ada () di sini
-            headless: chromium.headless,
+            executablePath: await chromium.executablePath(),
+            // PERBAIKAN: Secara eksplisit mengatur headless ke true (boolean)
+            headless: true,
         });
 
         const page = await browser.newPage();
         console.log(`Mencoba membuka halaman: ${url}`);
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
         
+// ... sisa kode sama persis, tidak ada perubahan lain ...
         // Scroll untuk memuat konten lazy-load
         await page.evaluate('window.scrollTo(0, document.body.scrollHeight / 2);');
         await new Promise(resolve => setTimeout(resolve, 1000));
