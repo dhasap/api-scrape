@@ -1,4 +1,4 @@
-// api/index.js (v2.6 - Enhanced Logging)
+// api/index.js (v2.7 - Smart Search Detection)
 const express = require('express');
 const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (v2.6)...');
+console.log('Menginisialisasi server (v2.7)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -31,21 +31,31 @@ function analyzePageContent(html, currentUrl) {
         other_elements: []
     };
 
+    // --- PERUBAHAN: Logika deteksi halaman pencarian ---
+    const isSearchPage = new URL(currentUrl).searchParams.has('s');
+    console.log(`[ANALYSIS] Apakah ini halaman pencarian? ${isSearchPage}`);
+
     // Heuristik untuk mendeteksi hasil pencarian
     const searchResultItems = $('div.list-update_item, article.bs, div.utao'); 
-    pageData.search_results = searchResultItems.map((i, el) => {
-        const element = $(el);
-        const titleElement = element.find('h3, .title, .tt');
-        const linkElement = element.find('a').first();
-        if (titleElement.length && linkElement.length) {
-            return {
-                title: titleElement.text().trim(),
-                url: new URL(linkElement.attr('href'), currentUrl).href
-            };
-        }
-        return null;
-    }).get().filter(item => item !== null); // .get() mengubahnya jadi array, filter menghapus null
-    console.log(`[ANALYSIS] Ditemukan ${pageData.search_results.length} item hasil pencarian.`);
+    
+    // Hanya proses sebagai hasil pencarian JIKA ini adalah halaman pencarian
+    if (isSearchPage && searchResultItems.length > 0) {
+        pageData.search_results = searchResultItems.map((i, el) => {
+            const element = $(el);
+            const titleElement = element.find('h3, .title, .tt');
+            const linkElement = element.find('a').first();
+            if (titleElement.length && linkElement.length) {
+                return {
+                    title: titleElement.text().trim(),
+                    url: new URL(linkElement.attr('href'), currentUrl).href
+                };
+            }
+            return null;
+        }).get().filter(item => item !== null);
+        console.log(`[ANALYSIS] Ditemukan ${pageData.search_results.length} item hasil pencarian.`);
+    } else {
+         console.log(`[ANALYSIS] Bukan halaman pencarian, tidak memproses hasil pencarian.`);
+    }
 
     // Heuristik untuk mendeteksi tombol "Next"
     const nextLink = $('a.next.page-numbers, a:contains("Next"), a[rel="next"]').first();
@@ -76,10 +86,8 @@ async function getPageElements(url) {
     let browser = null;
     console.log(`[NAVIGATE] Memulai proses untuk URL: ${url}`);
     try {
-        console.log(`[NAVIGATE] Mencari path executable Chromium...`);
         const executablePath = await chromium.executablePath();
         if (!executablePath) throw new Error("Path executable Chromium tidak ditemukan.");
-        console.log(`[NAVIGATE] Path ditemukan. Meluncurkan browser...`);
         
         browser = await playwright.chromium.launch({
             args: chromium.args,
@@ -88,7 +96,6 @@ async function getPageElements(url) {
             ignoreHTTPSErrors: true,
         });
         
-        console.log(`[NAVIGATE] Browser berhasil diluncurkan.`);
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         });
@@ -103,7 +110,6 @@ async function getPageElements(url) {
             document.querySelectorAll('a, button, input').forEach((el, index) => el.setAttribute('data-ai-id', `ai-id-${index}`));
             return document.documentElement.outerHTML;
         });
-        console.log(`[NAVIGATE] Berhasil menyuntikkan ID dan mengambil HTML.`);
         
         const analyzedData = analyzePageContent(htmlWithIds, page.url());
         
@@ -126,10 +132,8 @@ function getAiSuggestion(goal, current_url, elements) {
     const elementMapStr = JSON.stringify(elements, null, 2);
     const prompt = `Anda adalah asisten navigasi. Tujuan: "${goal}". URL saat ini: "${current_url}". Berdasarkan elemen ini: ${elementMapStr.substring(0, 30000)}, tentukan aksi terbaik berikutnya (navigate, scrape, atau fail) dalam format JSON: {"action": "...", "details": {"url": "...", "reason": "..."}}`;
     
-    console.log(`[AI-SUGGEST] Mengirim prompt ke Gemini...`);
     return model.generateContent(prompt)
         .then(r => {
-            console.log(`[AI-SUGGEST] Menerima respons dari Gemini.`);
             const jsonText = r.response.text().replace(/```json|```/g, '').trim();
             return JSON.parse(jsonText);
         })
@@ -147,10 +151,8 @@ function scrapeDetailsWithAi(goal, html_content) {
     const cleanHtml = $('body').html();
     const prompt = `Anda ahli scraper. Tujuan: "${goal}". Ekstrak data dari HTML ini ke format JSON (title, author, genre, status, synopsis, chapters): --- ${cleanHtml.substring(0, 40000)} ---`;
     
-    console.log(`[AI-SCRAPE] Mengirim prompt ke Gemini...`);
     return model.generateContent(prompt)
         .then(r => {
-            console.log(`[AI-SCRAPE] Menerima respons dari Gemini.`);
             const jsonText = r.response.text().replace(/```json|```/g, '').trim();
             if (!jsonText.startsWith('{')) throw new Error(`Respons AI tidak valid (bukan JSON).`);
             return JSON.parse(jsonText);
