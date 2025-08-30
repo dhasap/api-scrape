@@ -4,7 +4,7 @@
       "src": "api/index.js",
       "use": "@vercel/node",
       "memory": 1024,
-      "maxDuration": 60
+      "maxDuration": 30
     }
   ],
   "rewrites": [
