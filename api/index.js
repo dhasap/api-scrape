@@ -94,7 +94,6 @@ function getExplorationSuggestion(pageTitle, htmlContent) {
     $('script, style, head').remove();
     const cleanText = $('body').text().replace(/\s+/g, ' ').trim();
 
-    // --- PROMPT DETAIL DIKEMBALIKAN ---
     const prompt = `
     Anda adalah asisten scraper cerdas dan proaktif. Pengguna sedang menjelajah dan baru saja tiba di sebuah halaman dengan judul "${pageTitle}".
     Tugas Anda adalah menganalisa ringkasan teks dari halaman ini dan memberikan saran yang paling berguna.
@@ -129,7 +128,6 @@ function getExplorationSuggestion(pageTitle, htmlContent) {
 function getNavigationSuggestion(goal, current_url, elements) {
     const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
     const elementMapStr = JSON.stringify(elements, null, 2);
-    // --- PROMPT DETAIL DIKEMBALIKAN ---
     const prompt = `
     Anda adalah otak dari agen web scraper otonom yang sangat fokus dan efisien.
     Tujuan akhir Anda (buruan Anda): "${goal}"
@@ -164,7 +162,6 @@ function scrapeDetailsWithAi(goal, html_content) {
     const $ = cheerio.load(html_content);
     $('script, style').remove();
     const cleanHtml = $('body').html();
-    // --- PROMPT DETAIL DIKEMBALIKAN ---
     const prompt = `
     Anda adalah ahli ekstraksi data yang sangat teliti. Tugas Anda adalah mengubah konten HTML menjadi data JSON yang bersih dan terstruktur.
     Tujuan Scraping: "Mendapatkan detail lengkap untuk komik berjudul '${goal}'".
