@@ -1,4 +1,4 @@
-// api/index.js (v3.3 - Flexible Vision)
+// api/index.js (v3.4 - Smart Text Cleaning)
 const express = require('express');
 const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (v3.3)...');
+console.log('Menginisialisasi server (v3.4)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -49,10 +49,23 @@ function analyzePageContent(html, currentUrl) {
 
     $('[data-ai-id]').each((i, el) => {
         const element = $(el);
+        
+        // --- PERBAIKAN: Logika pembersihan teks cerdas ---
+        let cleanText = '';
+        const boldText = element.find('b, strong').first().text().trim();
+
+        if (boldText) {
+            // Jika ada teks tebal (seperti di logo), gunakan itu
+            cleanText = boldText;
+        } else {
+            // Jika tidak, ambil semua teks dan rapikan spasinya
+            cleanText = element.text().replace(/\s+/g, ' ').trim();
+        }
+        
         pageData.other_elements.push({
             ai_id: element.attr('data-ai-id'), 
             tag: el.tagName.toLowerCase(),
-            text: element.text().trim(),
+            text: cleanText, // Menggunakan teks yang sudah dibersihkan
             href: element.is('a') ? new URL(element.attr('href'), currentUrl).href : null,
             placeholder: element.is('input') ? element.attr('placeholder') : null,
         });
@@ -64,7 +77,6 @@ function analyzePageContent(html, currentUrl) {
 function scrapeChapterImages(html, currentUrl) {
     const $ = cheerio.load(html);
     const chapterData = { images: [], next_chapter_url: null, prev_chapter_url: null };
-    // --- PERUBAHAN: Selector gambar diperbanyak ---
     $('#readerarea img, .reading-content img, .main-reading-area img, div.chapter-images img').each((i, el) => {
         const imageUrl = $(el).attr('src');
         if (imageUrl) chapterData.images.push(imageUrl.trim());
@@ -87,25 +99,15 @@ async function navigateAndAnalyze(url, isChapterPage = false) {
             args: chromium.args, executablePath, headless: true, ignoreHTTPSErrors: true
         });
         
-        const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'});
+        const context = await browser.newContext({ userAgent: 'Mozilla/5.o (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'});
         const page = await context.newPage();
         page.setDefaultNavigationTimeout(60000);
 
         await page.goto(url, { waitUntil: 'networkidle' });
         
         if (isChapterPage) {
-            // --- PERUBAHAN: Menggunakan daftar selector dan timeout lebih lama ---
-            console.log("[CHAPTER-SCRAPE] Menunggu salah satu selector gambar muncul...");
-            const imageSelectors = [
-                '#readerarea img',
-                '.reading-content img',
-                '.main-reading-area img',
-                'div.chapter-images img'
-            ];
-            
+            const imageSelectors = ['#readerarea img', '.reading-content img', '.main-reading-area img', 'div.chapter-images img'];
             await page.waitForSelector(imageSelectors.join(', '), { timeout: 30000 });
-
-            console.log("[CHAPTER-SCRAPE] Selector gambar ditemukan. Mengambil konten...");
             const contentHtml = await page.content();
             return scrapeChapterImages(contentHtml, page.url());
         } else {
