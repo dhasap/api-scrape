@@ -1,4 +1,4 @@
-// api/index.js (v3.2 - Smart Prompts)
+// api/index.js (v3.3 - Flexible Vision)
 const express = require('express');
 const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (v3.2)...');
+console.log('Menginisialisasi server (v3.3)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -64,7 +64,8 @@ function analyzePageContent(html, currentUrl) {
 function scrapeChapterImages(html, currentUrl) {
     const $ = cheerio.load(html);
     const chapterData = { images: [], next_chapter_url: null, prev_chapter_url: null };
-    $('#readerarea img, .reading-content img').each((i, el) => {
+    // --- PERUBAHAN: Selector gambar diperbanyak ---
+    $('#readerarea img, .reading-content img, .main-reading-area img, div.chapter-images img').each((i, el) => {
         const imageUrl = $(el).attr('src');
         if (imageUrl) chapterData.images.push(imageUrl.trim());
     });
@@ -93,8 +94,17 @@ async function navigateAndAnalyze(url, isChapterPage = false) {
         await page.goto(url, { waitUntil: 'networkidle' });
         
         if (isChapterPage) {
-            console.log("[CHAPTER-SCRAPE] Menunggu selector gambar muncul...");
-            await page.waitForSelector('#readerarea img, .reading-content img', { timeout: 15000 });
+            // --- PERUBAHAN: Menggunakan daftar selector dan timeout lebih lama ---
+            console.log("[CHAPTER-SCRAPE] Menunggu salah satu selector gambar muncul...");
+            const imageSelectors = [
+                '#readerarea img',
+                '.reading-content img',
+                '.main-reading-area img',
+                'div.chapter-images img'
+            ];
+            
+            await page.waitForSelector(imageSelectors.join(', '), { timeout: 30000 });
+
             console.log("[CHAPTER-SCRAPE] Selector gambar ditemukan. Mengambil konten...");
             const contentHtml = await page.content();
             return scrapeChapterImages(contentHtml, page.url());
@@ -117,7 +127,6 @@ async function navigateAndAnalyze(url, isChapterPage = false) {
 function getAiSuggestion(goal, current_url, elements) {
     const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
     const elementMapStr = JSON.stringify(elements, null, 2);
-    // --- PERUBAHAN: Prompt dibuat lebih deskriptif dan cerdas ---
     const prompt = `
     Anda adalah otak dari agen web scraper otonom yang sangat cerdas.
     Tujuan akhir Anda: "${goal}"
@@ -152,7 +161,6 @@ function scrapeDetailsWithAi(goal, html_content) {
     const $ = cheerio.load(html_content);
     $('script, style').remove();
     const cleanHtml = $('body').html();
-    // --- PERUBAHAN: Prompt dibuat lebih deskriptif dengan contoh format ---
     const prompt = `
     Anda adalah ahli ekstraksi data yang sangat teliti. Tugas Anda adalah mengubah konten HTML menjadi data JSON yang bersih dan terstruktur.
     Tujuan Scraping: "Mendapatkan detail lengkap untuk komik berjudul '${goal}'".
