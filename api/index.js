@@ -1,4 +1,4 @@
-// api/index.js (v3.5 - Super Smart Text Cleaning)
+// api/index.js (v3.7 - Detailed Prompts)
 const express = require('express');
 const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (v3.5)...');
+console.log('Menginisialisasi server (v3.7)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -18,7 +18,7 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
-// --- Fungsi Analisa Halaman (DIGABUNGKAN) ---
+// --- Fungsi Analisa Halaman ---
 function analyzePageContent(html, currentUrl) {
     const $ = cheerio.load(html);
     const pageData = {
@@ -46,31 +46,23 @@ function analyzePageContent(html, currentUrl) {
     if (nextLink.length > 0) {
         pageData.pagination.next_page_url = new URL(nextLink.attr('href'), currentUrl).href;
     }
-
+    
     $('[data-ai-id]').each((i, el) => {
         const element = $(el);
-        
-        // --- PERBAIKAN FINAL: Logika pembersihan teks super cerdas ---
         let cleanText = '';
-        // Prioritas 1: Cari teks tebal
         const boldText = element.find('b, strong').first().text().trim();
-
         if (boldText) {
             cleanText = boldText;
         } else {
-            // Prioritas 2: Ambil semua teks dan rapikan
             cleanText = element.text().replace(/\s+/g, ' ').trim();
         }
-
-        // Langkah Final: Potong tagline jika ada tanda hubung
         if (cleanText.includes(' - ')) {
             cleanText = cleanText.split(' - ')[0].trim();
         }
-        
         pageData.other_elements.push({
             ai_id: element.attr('data-ai-id'), 
             tag: el.tagName.toLowerCase(),
-            text: cleanText, // Menggunakan teks yang sudah dibersihkan
+            text: cleanText,
             href: element.is('a') ? new URL(element.attr('href'), currentUrl).href : null,
             placeholder: element.is('input') ? element.attr('placeholder') : null,
         });
@@ -93,69 +85,73 @@ function scrapeChapterImages(html, currentUrl) {
     return chapterData;
 }
 
-// --- Logika Navigasi Inti ---
-async function navigateAndAnalyze(url, isChapterPage = false) {
-    let browser = null;
-    try {
-        const executablePath = await chromium.executablePath();
-        if (!executablePath) throw new Error("Path executable Chromium tidak ditemukan.");
-        
-        browser = await playwright.chromium.launch({
-            args: chromium.args, executablePath, headless: true, ignoreHTTPSErrors: true
-        });
-        
-        const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'});
-        const page = await context.newPage();
-        page.setDefaultNavigationTimeout(60000);
+// --- FUNGSI AI (DENGAN DUA MODE OTAK & PROMPT DETAIL) ---
 
-        await page.goto(url, { waitUntil: 'networkidle' });
-        
-        if (isChapterPage) {
-            const imageSelectors = ['#readerarea img', '.reading-content img', '.main-reading-area img', 'div.chapter-images img'];
-            await page.waitForSelector(imageSelectors.join(', '), { timeout: 30000 });
-            const contentHtml = await page.content();
-            return scrapeChapterImages(contentHtml, page.url());
-        } else {
-            const htmlWithIds = await page.evaluate(() => {
-                document.querySelectorAll('a, button, input').forEach((el, index) => el.setAttribute('data-ai-id', `ai-id-${index}`));
-                return document.documentElement.outerHTML;
-            });
-            return analyzePageContent(htmlWithIds, page.url());
-        }
-    } catch (error) {
-        console.error(`[NAVIGATE] Gagal total saat memproses ${url}:`, error);
-        throw new Error(`Gagal membuka URL: ${error.message}`);
-    } finally {
-        if (browser) await browser.close();
+// Mode 1: "Co-pilot Penjelajah"
+function getExplorationSuggestion(pageTitle, htmlContent) {
+    const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
+    const $ = cheerio.load(htmlContent);
+    $('script, style, head').remove();
+    const cleanText = $('body').text().replace(/\s+/g, ' ').trim();
+
+    // --- PROMPT DETAIL DIKEMBALIKAN ---
+    const prompt = `
+    Anda adalah asisten scraper cerdas dan proaktif. Pengguna sedang menjelajah dan baru saja tiba di sebuah halaman dengan judul "${pageTitle}".
+    Tugas Anda adalah menganalisa ringkasan teks dari halaman ini dan memberikan saran yang paling berguna.
+    
+    Ringkasan Teks Halaman:
+    ---
+    ${cleanText.substring(0, 10000)}
+    ---
+
+    Berdasarkan judul dan ringkasan teks di atas, jawab pertanyaan-pertanyaan berikut:
+    1.  Apa tujuan utama dari halaman ini? (Contoh: Menampilkan daftar komik populer, daftar genre, dll.)
+    2.  Apakah ada daftar data yang jelas dan menarik untuk di-scrape? (Fokus pada: daftar judul komik, menu genre, tipe komik, daftar update terbaru).
+
+    Jika Anda menemukan sesuatu yang menarik, berikan saran untuk men-scrape area tersebut.
+    Jika halaman ini tampaknya hanya halaman navigasi biasa atau tidak ada daftar data yang jelas, katakan saja begitu.
+
+    Berikan jawaban Anda dalam format JSON yang VALID dan tidak mengandung markdown:
+    {
+      "is_interesting": boolean,
+      "suggestion_text": "Saran singkat dan jelas untuk ditampilkan di menu. Contoh: Scrape Daftar Komik Populer",
+      "reason": "Alasan singkat dan logis mengapa halaman ini menarik atau tidak menarik untuk di-scrape."
     }
+    `;
+
+    return model.generateContent(prompt)
+        .then(r => JSON.parse(r.response.text().replace(/```json|```/g, '').trim()))
+        .catch(e => ({ is_interesting: false, suggestion_text: "Analisa gagal", reason: e.message }));
 }
 
-// --- Fungsi AI (Lengkap dengan Prompt Baru) ---
-function getAiSuggestion(goal, current_url, elements) {
+
+// Mode 2: "GPS Pemburu"
+function getNavigationSuggestion(goal, current_url, elements) {
     const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
     const elementMapStr = JSON.stringify(elements, null, 2);
+    // --- PROMPT DETAIL DIKEMBALIKAN ---
     const prompt = `
-    Anda adalah otak dari agen web scraper otonom yang sangat cerdas.
-    Tujuan akhir Anda: "${goal}"
+    Anda adalah otak dari agen web scraper otonom yang sangat fokus dan efisien.
+    Tujuan akhir Anda (buruan Anda): "${goal}"
     Posisi Anda saat ini: "${current_url}"
 
-    Tugas Anda adalah memilih SATU langkah berikutnya yang paling efisien berdasarkan "peta elemen" di bawah ini.
+    Tugas Anda adalah memilih SATU langkah berikutnya yang paling efisien untuk mencapai tujuan, berdasarkan "peta elemen" di bawah ini.
     Pilih salah satu dari aksi berikut dan kembalikan dalam format JSON yang VALID:
-    1.  {"action": "navigate", "details": {"url": "URL_TUJUAN", "reason": "Alasan singkat mengapa Anda memilih link ini."}}: Jika Anda perlu mengklik sebuah link atau tombol untuk lebih dekat ke tujuan.
-    2.  {"action": "scrape", "details": {"reason": "Alasan singkat mengapa halaman ini siap di-scrape."}}: HANYA jika Anda YAKIN 100% sudah berada di halaman detail final yang berisi informasi yang dicari (seperti sinopsis, daftar chapter, dll).
-    3.  {"action": "fail", "details": {"reason": "ALASAN_GAGAL"}}: Jika Anda buntu, tidak bisa menemukan elemen yang relevan, atau merasa halaman ini tidak akan membawa lebih dekat ke tujuan.
+    1.  {"action": "navigate", "details": {"url": "URL_TUJUAN", "reason": "Alasan singkat kenapa link ini adalah pilihan terbaik."}}: Jika Anda perlu mengklik sebuah link atau tombol untuk lebih dekat ke tujuan.
+    2.  {"action": "scrape", "details": {"reason": "Alasan singkat kenapa halaman ini adalah tujuan akhir."}}: HANYA jika Anda YAKIN 100% sudah berada di halaman detail final yang berisi informasi yang dicari.
+    3.  {"action": "fail", "details": {"reason": "ALASAN_GAGAL"}}: Jika Anda buntu atau tidak ada elemen relevan yang bisa membawa Anda lebih dekat ke tujuan.
 
     --- ATURAN KRITIS ---
-    - Jika URL saat ini mengandung parameter pencarian (contoh: "?s=") atau halaman ini jelas merupakan DAFTAR HASIL PENCARIAN, tugas utama Anda adalah **MENGKLIK** link yang judulnya paling relevan dengan tujuan "${goal}".
-    - **JANGAN** memilih 'scrape' di halaman daftar, halaman utama, atau halaman hasil pencarian. Aksi 'scrape' hanya untuk halaman detail.
-    - Selalu berikan alasan yang jelas dan singkat untuk setiap pilihan Anda.
+    - Jika Anda berada di halaman hasil pencarian (URL mengandung "?s="), tugas utama Anda adalah **MENGKLIK** link yang judulnya paling mirip dengan "${goal}".
+    - **JANGAN** pernah memilih 'scrape' di halaman daftar, halaman utama, atau halaman hasil pencarian. Aksi 'scrape' HANYA untuk halaman detail.
+    - Alasan Anda harus logis dan fokus pada tujuan.
     --------------------
 
     Peta Elemen Interaktif di Halaman Saat Ini (Maksimal 30KB):
     ---
     ${elementMapStr.substring(0, 30000)}
     ---
-    Berdasarkan tujuan, posisi, dan ATURAN KRITIS di atas, tentukan langkah berikutnya.
+    Tentukan langkah berikutnya.
     `;
     
     return model.generateContent(prompt)
@@ -168,6 +164,7 @@ function scrapeDetailsWithAi(goal, html_content) {
     const $ = cheerio.load(html_content);
     $('script, style').remove();
     const cleanHtml = $('body').html();
+    // --- PROMPT DETAIL DIKEMBALIKAN ---
     const prompt = `
     Anda adalah ahli ekstraksi data yang sangat teliti. Tugas Anda adalah mengubah konten HTML menjadi data JSON yang bersih dan terstruktur.
     Tujuan Scraping: "Mendapatkan detail lengkap untuk komik berjudul '${goal}'".
@@ -187,11 +184,6 @@ function scrapeDetailsWithAi(goal, html_content) {
           "chapter_title": "Chapter 1 - Judul Chapter",
           "release_date": "Tanggal Rilis Chapter (jika ada)",
           "url": "https://url-lengkap-ke-chapter-1.com"
-        },
-        {
-          "chapter_title": "Chapter 2 - Judul Chapter Lain",
-          "release_date": "Tanggal Rilis Chapter (jika ada)",
-          "url": "https://url-lengkap-ke-chapter-2.com"
         }
       ]
     }
@@ -200,8 +192,8 @@ function scrapeDetailsWithAi(goal, html_content) {
     ATURAN PENTING:
     1.  Ikuti format contoh di atas dengan SANGAT TELITI. Nama key harus persis sama.
     2.  Pastikan JSON yang Anda hasilkan 100% valid. Perhatikan penggunaan koma (,) dan kurung siku [].
-    3.  Ekstrak SEMUA chapter yang tersedia dalam HTML. Jangan hanya mengambil beberapa.
-    4.  Jika suatu informasi (seperti author atau rating) tidak dapat ditemukan, gunakan \`null\` sebagai nilainya, JANGAN string kosong "".
+    3.  Ekstrak SEMUA chapter yang tersedia dalam HTML.
+    4.  Jika suatu informasi (seperti author atau rating) tidak dapat ditemukan, gunakan \`null\` sebagai nilainya, BUKAN string kosong "".
     5.  Untuk 'genre', hasilnya harus berupa array of strings.
 
     HTML untuk di-scrape (sudah dibersihkan dari script dan style):
@@ -210,32 +202,82 @@ function scrapeDetailsWithAi(goal, html_content) {
     ---
     Silakan mulai ekstraksi.
     `;
-    
-    return model.generateContent(prompt)
-        .then(r => JSON.parse(r.response.text().replace(/```json|```/g, '').trim()))
-        .catch(e => { throw new Error(e.message) });
+
+    return model.generateContent(prompt).then(r => JSON.parse(r.response.text().replace(/```json|```/g, '').trim())).catch(e => { throw new Error(e.message) });
 }
+
+
+// --- Logika Navigasi Inti ---
+async function navigateAndAnalyze(url, context) {
+    let browser = null;
+    try {
+        const executablePath = await chromium.executablePath();
+        if (!executablePath) throw new Error("Path executable Chromium tidak ditemukan.");
+        
+        browser = await playwright.chromium.launch({
+            args: chromium.args, executablePath, headless: true, ignoreHTTPSErrors: true
+        });
+        
+        const page = await browser.newPage({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'});
+        page.setDefaultNavigationTimeout(60000);
+        await page.goto(url, { waitUntil: 'networkidle' });
+
+        if (context.isChapter) {
+            const imageSelectors = ['#readerarea img', '.reading-content img', '.main-reading-area img', 'div.chapter-images img'];
+            await page.waitForSelector(imageSelectors.join(', '), { timeout: 30000 });
+            const contentHtml = await page.content();
+            return scrapeChapterImages(contentHtml, page.url());
+        }
+
+        const htmlWithIds = await page.evaluate(() => {
+            document.querySelectorAll('a, button, input').forEach((el, index) => el.setAttribute('data-ai-id', `ai-id-${index}`));
+            return document.documentElement.outerHTML;
+        });
+
+        let analyzedData = analyzePageContent(htmlWithIds, page.url());
+
+        if (context.mode === 'exploration') {
+            console.log("[AI-EXPLORE] Mode Penjelajahan Aktif. Menganalisa halaman...");
+            const explorationSuggestion = await getExplorationSuggestion(analyzedData.title, analyzedData.html);
+            if (explorationSuggestion && explorationSuggestion.is_interesting) {
+                analyzedData.contextual_suggestion = explorationSuggestion;
+            }
+        }
+        
+        return analyzedData;
+    } catch (error) {
+        console.error(`[NAVIGATE] Gagal total saat memproses ${url}:`, error);
+        throw new Error(`Gagal membuka URL: ${error.message}`);
+    } finally {
+        if (browser) await browser.close();
+    }
+}
+
 
 // --- Endpoint API ---
 app.post("/api/navigate", async (req, res) => {
     try {
-        const result = await navigateAndAnalyze(req.body.url, false);
+        const { url, context = {} } = req.body;
+        const result = await navigateAndAnalyze(url, context);
         res.json({ status: "success", data: result });
     } catch (error) { res.status(500).json({ status: "error", message: error.message }); }
 });
+
 app.post("/api/scrape_chapter", async (req, res) => {
     try {
-        const result = await navigateAndAnalyze(req.body.url, true);
+        const result = await navigateAndAnalyze(req.body.url, { isChapter: true });
         res.json({ status: "success", data: result });
     } catch (error) { res.status(500).json({ status: "error", message: error.message }); }
 });
+
 app.post("/api/suggest_action", async (req, res) => {
     const { goal, current_url, elements } = req.body; 
     try {
-        const suggestion = await getAiSuggestion(goal, current_url, elements);
+        const suggestion = await getNavigationSuggestion(goal, current_url, elements);
         res.json({ status: "success", data: suggestion });
     } catch (error) { res.status(500).json({ status: "error", message: error.message }); }
 });
+
 app.post("/api/scrape", async (req, res) => {
     const { goal, html_content } = req.body;
     try {
@@ -243,6 +285,7 @@ app.post("/api/scrape", async (req, res) => {
         res.json({ status: "success", data: result });
     } catch (error) { res.status(500).json({ status: "error", message: error.message }); }
 });
+
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
 module.exports = app;
