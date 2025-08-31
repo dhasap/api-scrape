@@ -1,4 +1,4 @@
-// api/index.js (v3.7 - Detailed Prompts)
+// api/index.js (v3.9 - Definitive Smart Brain)
 const express = require('express');
 const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (v3.7)...');
+console.log('Menginisialisasi server (v3.9)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -41,24 +41,17 @@ function analyzePageContent(html, currentUrl) {
             return null;
         }).get();
     }
-
     const nextLink = $('a.next.page-numbers, a:contains("Next"), a[rel="next"]').first();
     if (nextLink.length > 0) {
         pageData.pagination.next_page_url = new URL(nextLink.attr('href'), currentUrl).href;
     }
-    
     $('[data-ai-id]').each((i, el) => {
         const element = $(el);
         let cleanText = '';
         const boldText = element.find('b, strong').first().text().trim();
-        if (boldText) {
-            cleanText = boldText;
-        } else {
-            cleanText = element.text().replace(/\s+/g, ' ').trim();
-        }
-        if (cleanText.includes(' - ')) {
-            cleanText = cleanText.split(' - ')[0].trim();
-        }
+        if (boldText) { cleanText = boldText; } 
+        else { cleanText = element.text().replace(/\s+/g, ' ').trim(); }
+        if (cleanText.includes(' - ')) { cleanText = cleanText.split(' - ')[0].trim(); }
         pageData.other_elements.push({
             ai_id: element.attr('data-ai-id'), 
             tag: el.tagName.toLowerCase(),
@@ -85,7 +78,7 @@ function scrapeChapterImages(html, currentUrl) {
     return chapterData;
 }
 
-// --- FUNGSI AI (DENGAN DUA MODE OTAK & PROMPT DETAIL) ---
+// --- FUNGSI AI (DENGAN PROMPT DETAIL) ---
 
 // Mode 1: "Co-pilot Penjelajah"
 function getExplorationSuggestion(pageTitle, htmlContent) {
@@ -103,26 +96,26 @@ function getExplorationSuggestion(pageTitle, htmlContent) {
     ${cleanText.substring(0, 10000)}
     ---
 
-    Berdasarkan judul dan ringkasan teks di atas, jawab pertanyaan-pertanyaan berikut:
-    1.  Apa tujuan utama dari halaman ini? (Contoh: Menampilkan daftar komik populer, daftar genre, dll.)
-    2.  Apakah ada daftar data yang jelas dan menarik untuk di-scrape? (Fokus pada: daftar judul komik, menu genre, tipe komik, daftar update terbaru).
+    Berdasarkan analisa Anda, tentukan:
+    1.  Apakah halaman ini berisi DAFTAR KONTEN (seperti daftar komik, daftar genre, update terbaru)? Atau apakah ini halaman DETAIL untuk satu item spesifik?
+    2.  Jika ini halaman DAFTAR, berikan saran untuk "Mengekstrak daftar...".
+    3.  Jika ini halaman DETAIL, berikan saran untuk "Mengekstrak detail...".
+    4.  Jika tidak jelas, katakan halaman ini tidak menarik.
 
-    Jika Anda menemukan sesuatu yang menarik, berikan saran untuk men-scrape area tersebut.
-    Jika halaman ini tampaknya hanya halaman navigasi biasa atau tidak ada daftar data yang jelas, katakan saja begitu.
-
-    Berikan jawaban Anda dalam format JSON yang VALID dan tidak mengandung markdown:
+    Berikan jawaban dalam format JSON yang VALID:
     {
       "is_interesting": boolean,
-      "suggestion_text": "Saran singkat dan jelas untuk ditampilkan di menu. Contoh: Scrape Daftar Komik Populer",
-      "reason": "Alasan singkat dan logis mengapa halaman ini menarik atau tidak menarik untuk di-scrape."
+      "suggestion_text": "Saran singkat dan jelas. Contoh: Ekstrak Daftar Komik Populer",
+      "scrape_action": "scrape_list" | "scrape_detail" | null,
+      "reason": "Alasan singkat kenapa halaman ini menarik."
     }
+    Pastikan nilai 'scrape_action' sesuai dengan tipe halaman.
     `;
 
     return model.generateContent(prompt)
         .then(r => JSON.parse(r.response.text().replace(/```json|```/g, '').trim()))
-        .catch(e => ({ is_interesting: false, suggestion_text: "Analisa gagal", reason: e.message }));
+        .catch(e => ({ is_interesting: false, suggestion_text: "Analisa gagal", reason: e.message, scrape_action: null }));
 }
-
 
 // Mode 2: "GPS Pemburu"
 function getNavigationSuggestion(goal, current_url, elements) {
@@ -157,6 +150,44 @@ function getNavigationSuggestion(goal, current_url, elements) {
         .catch(e => ({ action: "fail", details: { reason: e.message } }));
 }
 
+// "ALAT" BARU: Scraper untuk Daftar
+function scrapeListWithAi(goal, html_content) {
+    const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
+    const $ = cheerio.load(html_content);
+    $('script, style, head, footer, header').remove();
+    const cleanHtml = $('body').html();
+    const prompt = `
+    Anda adalah ahli ekstraksi data yang fokus pada daftar.
+    Tujuan Scraping: "${goal}".
+    
+    Dari konten HTML berikut, ekstrak SEMUA item yang ada di dalam daftar utama.
+    Setiap item harus memiliki "title" dan "url".
+
+    --- CONTOH FORMAT JSON YANG DIINGINKAN ---
+    {
+      "list_title": "Judul Daftar (Contoh: Komik Populer)",
+      "items": [
+        { "title": "Judul Item Pertama", "url": "https://url-ke-item-1.com" },
+        { "title": "Judul Item Kedua", "url": "https://url-ke-item-2.com" }
+      ]
+    }
+    -----------------------------------------
+
+    ATURAN PENTING:
+    1.  Pastikan JSON 100% valid.
+    2.  Fokus hanya pada daftar utama di halaman, abaikan menu samping atau footer.
+    
+    HTML untuk di-scrape:
+    ---
+    ${cleanHtml.substring(0, 40000)}
+    ---
+    Silakan mulai ekstraksi.
+    `;
+    return model.generateContent(prompt).then(r => JSON.parse(r.response.text().replace(/```json|```/g, '').trim())).catch(e => { throw new Error(e.message) });
+}
+
+
+// "ALAT" LAMA: Scraper untuk Detail
 function scrapeDetailsWithAi(goal, html_content) {
     const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
     const $ = cheerio.load(html_content);
@@ -199,7 +230,6 @@ function scrapeDetailsWithAi(goal, html_content) {
     ---
     Silakan mulai ekstraksi.
     `;
-
     return model.generateContent(prompt).then(r => JSON.parse(r.response.text().replace(/```json|```/g, '').trim())).catch(e => { throw new Error(e.message) });
 }
 
@@ -210,37 +240,27 @@ async function navigateAndAnalyze(url, context) {
     try {
         const executablePath = await chromium.executablePath();
         if (!executablePath) throw new Error("Path executable Chromium tidak ditemukan.");
-        
-        browser = await playwright.chromium.launch({
-            args: chromium.args, executablePath, headless: true, ignoreHTTPSErrors: true
-        });
-        
+        browser = await playwright.chromium.launch({ args: chromium.args, executablePath, headless: true, ignoreHTTPSErrors: true });
         const page = await browser.newPage({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'});
         page.setDefaultNavigationTimeout(60000);
         await page.goto(url, { waitUntil: 'networkidle' });
-
         if (context.isChapter) {
             const imageSelectors = ['#readerarea img', '.reading-content img', '.main-reading-area img', 'div.chapter-images img'];
             await page.waitForSelector(imageSelectors.join(', '), { timeout: 30000 });
             const contentHtml = await page.content();
             return scrapeChapterImages(contentHtml, page.url());
         }
-
         const htmlWithIds = await page.evaluate(() => {
             document.querySelectorAll('a, button, input').forEach((el, index) => el.setAttribute('data-ai-id', `ai-id-${index}`));
             return document.documentElement.outerHTML;
         });
-
         let analyzedData = analyzePageContent(htmlWithIds, page.url());
-
         if (context.mode === 'exploration') {
-            console.log("[AI-EXPLORE] Mode Penjelajahan Aktif. Menganalisa halaman...");
             const explorationSuggestion = await getExplorationSuggestion(analyzedData.title, analyzedData.html);
             if (explorationSuggestion && explorationSuggestion.is_interesting) {
                 analyzedData.contextual_suggestion = explorationSuggestion;
             }
         }
-        
         return analyzedData;
     } catch (error) {
         console.error(`[NAVIGATE] Gagal total saat memproses ${url}:`, error);
@@ -260,13 +280,20 @@ app.post("/api/navigate", async (req, res) => {
     } catch (error) { res.status(500).json({ status: "error", message: error.message }); }
 });
 
+app.post("/api/scrape_list", async (req, res) => {
+    const { goal, html_content } = req.body;
+    try {
+        const result = await scrapeListWithAi(goal, html_content);
+        res.json({ status: "success", data: result });
+    } catch (error) { res.status(500).json({ status: "error", message: error.message }); }
+});
+
 app.post("/api/scrape_chapter", async (req, res) => {
     try {
         const result = await navigateAndAnalyze(req.body.url, { isChapter: true });
         res.json({ status: "success", data: result });
     } catch (error) { res.status(500).json({ status: "error", message: error.message }); }
 });
-
 app.post("/api/suggest_action", async (req, res) => {
     const { goal, current_url, elements } = req.body; 
     try {
@@ -274,7 +301,6 @@ app.post("/api/suggest_action", async (req, res) => {
         res.json({ status: "success", data: suggestion });
     } catch (error) { res.status(500).json({ status: "error", message: error.message }); }
 });
-
 app.post("/api/scrape", async (req, res) => {
     const { goal, html_content } = req.body;
     try {
