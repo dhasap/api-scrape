@@ -1,4 +1,4 @@
-// api/index.js (v3.4 - Smart Text Cleaning)
+// api/index.js (v3.5 - Super Smart Text Cleaning)
 const express = require('express');
 const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (v3.4)...');
+console.log('Menginisialisasi server (v3.5)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -50,16 +50,21 @@ function analyzePageContent(html, currentUrl) {
     $('[data-ai-id]').each((i, el) => {
         const element = $(el);
         
-        // --- PERBAIKAN: Logika pembersihan teks cerdas ---
+        // --- PERBAIKAN FINAL: Logika pembersihan teks super cerdas ---
         let cleanText = '';
+        // Prioritas 1: Cari teks tebal
         const boldText = element.find('b, strong').first().text().trim();
 
         if (boldText) {
-            // Jika ada teks tebal (seperti di logo), gunakan itu
             cleanText = boldText;
         } else {
-            // Jika tidak, ambil semua teks dan rapikan spasinya
+            // Prioritas 2: Ambil semua teks dan rapikan
             cleanText = element.text().replace(/\s+/g, ' ').trim();
+        }
+
+        // Langkah Final: Potong tagline jika ada tanda hubung
+        if (cleanText.includes(' - ')) {
+            cleanText = cleanText.split(' - ')[0].trim();
         }
         
         pageData.other_elements.push({
@@ -99,7 +104,7 @@ async function navigateAndAnalyze(url, isChapterPage = false) {
             args: chromium.args, executablePath, headless: true, ignoreHTTPSErrors: true
         });
         
-        const context = await browser.newContext({ userAgent: 'Mozilla/5.o (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'});
+        const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'});
         const page = await context.newPage();
         page.setDefaultNavigationTimeout(60000);
 
