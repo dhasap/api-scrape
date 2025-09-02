@@ -1,23 +1,26 @@
 {
-  "name": "api-scrape-backend",
+  "name": "api",
   "version": "1.0.0",
-  "description": "Backend for AI Scraper",
-  "main": "api/index.js",
+  "description": "",
+  "main": "index.js",
   "scripts": {
-    "start": "node api/index.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "engines": {
     "node": "20.x"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "0.11.1",
     "@sparticuz/chromium": "^126.0.0",
+    "@supabase/supabase-js": "^2.44.4",
     "cheerio": "^1.0.0-rc.12",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "puppeteer-core": "^22.13.1",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "2.11.2"
   }
 }
-
