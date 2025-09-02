@@ -10,14 +10,14 @@
     "node": "20.x"
   },
   "dependencies": {
-    "express": "^4.19.2",
     "@google/generative-ai": "0.11.1",
-    "dotenv": "^16.4.5",
-    "playwright-core": "^1.45.3",
     "@sparticuz/chromium": "^126.0.0",
     "cheerio": "^1.0.0-rc.12",
-    "playwright-extra": "^4.3.6",
-    "playwright-extra-plugin-stealth": "2.11.2"
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "puppeteer-core": "^22.13.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
 
