@@ -1,5 +1,6 @@
-// api/index.js (Versi A.1 - Syntax Fix)
-// Perbaikan untuk SyntaxError yang menyebabkan crash server.
+// api/index.js (Versi A.2 - Server Fix)
+// Perbaikan untuk ReferenceError: port is not defined dan merapikan struktur
+// agar sesuai dengan praktik terbaik Vercel Serverless Functions.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -15,7 +16,7 @@ puppeteer.use(StealthPlugin());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi A.1 - Syntax Fix)...');
+console.log('Menginisialisasi server (Versi A.2 - Server Fix)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-pro-latest";
 
@@ -60,7 +61,6 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
     }
 
     // ================== PROMPT STANDAR UNTUK OPERASI NORMAL ==================
-    // PERBAIKAN: Menghapus karakter backtick (`) yang menyebabkan SyntaxError.
     return `
     Anda adalah "ScrapeMind", sebuah agen AI web scraping yang sangat canggih, logis, dan teliti.
     Misi utama Anda adalah menerjemahkan instruksi bahasa manusia menjadi perintah JSON yang presisi untuk dieksekusi oleh mesin scraper.
@@ -256,34 +256,44 @@ async function navigateAndAnalyze(url, instruction, isRecovery = false) {
     }
 }
 
-// ================== ENDPOINTS (TIDAK ADA PERUBAHAN) ==================
+// ================== ENDPOINTS EXPRESS ==================
+// Mendefinisikan semua "pintu masuk" API.
+
 app.post('/api/scrape', async (req, res) => {
     const { url, instruction } = req.body;
     if (!url || !instruction) {
         return res.status(400).json({ error: 'URL dan instruksi diperlukan' });
     }
-    const result = await navigateAndAnalyze(url, instruction);
-    res.json(result);
+    try {
+        const result = await navigateAndAnalyze(url, instruction);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
 });
 
 app.post('/api/chain-scrape', async (req, res) => {
     let { url, instruction } = req.body;
     if (!url || !instruction) { return res.status(400).json({ error: 'URL dan instruksi diperlukan' }); }
+    
     const results = [];
     let currentUrl = url;
     let currentInstruction = instruction;
-    for (let i = 0; i < 10; i++) {
-        const result = await navigateAndAnalyze(currentUrl, currentInstruction);
-        results.push(result);
-        if (result.status === 'error' || result.action !== 'navigate') { break; }
+
+    for (let i = 0; i < 10; i++) { // Maksimal 10 langkah untuk keamanan
         try {
+            const result = await navigateAndAnalyze(currentUrl, currentInstruction);
+            results.push(result);
+            if (result.status === 'error' || result.action !== 'navigate') { break; }
+            
             currentUrl = new URL(result.url, currentUrl).href;
             currentInstruction = result.instruction;
-        } catch (e) {
-            results.push({ status: 'error', message: `Invalid URL: ${result.url}` });
+            
+            if (!currentInstruction) { break; }
+        } catch(error) {
+            results.push({ status: 'error', message: `Langkah ke-${i+1} gagal: ${error.message}` });
             break;
         }
-        if (!currentInstruction) { break; }
     }
     res.json({ status: 'completed', steps: results });
 });
@@ -334,8 +344,8 @@ app.get('/', (req, res) => {
     res.send('AI Scraper API is running!');
 });
 
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-});
-
+// ================== PERBAIKAN: EKSPOR UNTUK VERCEL ==================
+// Untuk lingkungan serverless Vercel, kita tidak perlu `app.listen`.
+// Kita hanya perlu mengekspor aplikasi Express agar Vercel bisa menanganinya.
 module.exports = app;
+
