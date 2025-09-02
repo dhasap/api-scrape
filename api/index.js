@@ -1,6 +1,5 @@
-// api/index.js (Versi D.1 - Gabungan Cerdas)
-// Menggabungkan Arsitektur Prompt Lanjutan (C.1) dengan fungsionalitas
-// Supabase, mode pemulihan, dan endpoint dari versi A.3.
+// api/index.js (Versi D.2 - Pemulihan Stabil)
+// Memperkenalkan fallback Cheerio untuk fingerprinting dan memperkuat logika pemulihan.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -16,7 +15,7 @@ puppeteer.use(StealthPlugin());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi D.1 - Gabungan Cerdas)...');
+console.log('Menginisialisasi server (Versi D.2 - Pemulihan Stabil)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash-latest";
 
@@ -33,8 +32,7 @@ app.use(express.json({ limit: '50mb' }));
  * ===================================================================================
  * FUNGSI UTAMA: PEMBUATAN PROMPT AI (createEnhancedPrompt)
  * ===================================================================================
- * Diperbarui dengan arsitektur prompt lanjutan untuk kecerdasan maksimal,
- * sambil mempertahankan mode pemulihan darurat.
+ * Kode di bagian ini tidak diubah.
  */
 function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt = false, memory = null, conversationHistory = []) {
     // ================== PROMPT UNTUK MODE PEMULIHAN DARURAT (TETAP ADA) ==================
@@ -80,7 +78,7 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
     1.  **ANALISIS TUJUAN:** Apa inti dari permintaan pengguna terakhir ("${instruction}")? Apakah untuk (a) mengekstrak data, (b) menavigasi ke halaman lain, atau (c) merespons pertanyaan umum?
     2.  **EVALUASI KONTEKS:** Tinjau riwayat percakapan. Apakah permintaan saat ini merupakan kelanjutan dari tugas sebelumnya?
     3.  **PEMINDAIAN HTML:** Pindai KESELURUHAN DOKUMEN HTML yang disediakan. Identifikasi kandidat elemen yang cocok dengan permintaan.
-    4.  **PEMILIHAN STRATEGI:** Tentukan selector CSS, URL tujuan, atau jawaban yang paling tepat berdasarkan analisis.
+    4.  **PEMILIhan STRATEGI:** Tentukan selector CSS, URL tujuan, atau jawaban yang paling tepat berdasarkan analisis.
     5.  **KONSTRUKSI PENALARAN (\`reasoning\`):** Jelaskan MENGAPA Anda memilih tindakan dan selector tertentu.
     6.  **PEMBUATAN KOMENTAR (\`commentary\`):** Tulis sapaan singkat dan ramah untuk pengguna dalam format Markdown.
     7.  **GENERASI JSON FINAL:** Bangun objek JSON dengan sangat hati-hati sesuai dengan struktur yang ditentukan.
@@ -121,7 +119,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
     let bodyHTML = '';
 
     try {
-        // Fase 2: Fetcher Bertingkat (TETAP ADA)
+        // Fase Fetcher Bertingkat (Tidak diubah)
         try {
             console.log("Tier 1: Mencoba fetch standar (cepat & ringan)...");
             const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36' }});
@@ -142,13 +140,11 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             console.log("Tier 2: Sukses! Konten didapat menggunakan browser.");
         }
     
+        // Fase Analisis AI (Tidak diubah)
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
-        // PERUBAHAN: Mengirim 'conversationHistory' ke prompt
         const finalPrompt = createEnhancedPrompt(instruction, url, bodyHTML, false, null, conversationHistory); 
         const result = await model.generateContent(finalPrompt);
         let text = (await result.response).text();
-
-        // PERUBAHAN: Menggunakan parser JSON yang lebih tahan banting
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
             console.error("RESPONS AI TIDAK MENGANDUNG JSON:", text);
@@ -156,8 +152,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
         }
         const jsonString = jsonMatch[0];
         const jsonResponse = JSON.parse(jsonString);
-
-        // PERUBAHAN: Menyiapkan respons dasar dengan data baru (reasoning, commentary)
         const baseResponse = {
             status: 'success',
             reasoning: jsonResponse.reasoning,
@@ -169,31 +163,54 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             const $ = cheerio.load(bodyHTML);
             const extractedData = {};
             
-            // Logika fingerprint Supabase (TETAP ADA)
-            if (!page) { 
-                console.log("Membuka browser sementara untuk memindai & menyimpan sidik jari...");
-                if (!browser) {
-                    const executablePath = await sparticuz_chromium.executablePath();
-                    browser = await puppeteer.launch({ args: sparticuz_chromium.args, executablePath, headless: sparticuz_chromium.headless });
-                }
-                page = await browser.newPage();
-                await page.setContent(bodyHTML, { waitUntil: 'networkidle0' });
-            }
-
             for (const item of jsonResponse.items) {
-                const elementHandle = await page.$(item.selector);
-                if (elementHandle) { 
-                    const fingerprintData = {
-                        tagName: await elementHandle.evaluate(el => el.tagName.toLowerCase()),
-                        textSample: (await elementHandle.evaluate(el => el.innerText)).substring(0, 150).trim(),
-                        attributes: await elementHandle.evaluate(el => Array.from(el.attributes, ({name}) => name)),
-                        selector: item.selector
-                    };
-                    const lookupKey = `${new URL(url).hostname}::${item.name}`;
-                    const { error } = await supabase.from('fingerprints').upsert({ lookup_key: lookupKey, fingerprint: fingerprintData });
-                    if(error) console.error("Gagal menyimpan sidik jari ke Supabase:", error);
-                    else console.log(`Sidik jari untuk '${lookupKey}' berhasil disimpan/diperbarui.`);
+                // PERUBAHAN #1: Logika Fingerprinting dengan Fallback Cheerio
+                try {
+                    // Prioritas 1: Mencoba membuat sidik jari dengan Puppeteer
+                    if (!page) { 
+                        console.log("Membuka browser sementara untuk sidik jari Puppeteer...");
+                        if (!browser) {
+                            const executablePath = await sparticuz_chromium.executablePath();
+                            browser = await puppeteer.launch({ args: sparticuz_chromium.args, executablePath, headless: sparticuz_chromium.headless });
+                        }
+                        page = await browser.newPage();
+                        await page.setContent(bodyHTML, { waitUntil: 'networkidle0' });
+                    }
+                    const elementHandle = await page.$(item.selector);
+                    if (elementHandle) { 
+                        const fingerprintData = {
+                            tagName: await elementHandle.evaluate(el => el.tagName.toLowerCase()),
+                            textSample: (await elementHandle.evaluate(el => el.innerText)).substring(0, 150).trim(),
+                            attributes: await elementHandle.evaluate(el => Array.from(el.attributes, ({name}) => name)),
+                            selector: item.selector
+                        };
+                        const lookupKey = `${new URL(url).hostname}::${item.name}`;
+                        const { error } = await supabase.from('fingerprints').upsert({ lookup_key: lookupKey, fingerprint: fingerprintData });
+                        if(error) console.error("Gagal menyimpan sidik jari (Puppeteer) ke Supabase:", error);
+                        else console.log(`Sidik jari (Puppeteer) untuk '${lookupKey}' berhasil disimpan.`);
+                    }
+                } catch (puppeteerError) {
+                    // Prioritas 2: Fallback ke Cheerio jika Puppeteer gagal
+                    console.warn(`Gagal membuat sidik jari dengan Puppeteer (${puppeteerError.message}), mencoba fallback Cheerio...`);
+                    const cheerioElements = $(item.selector);
+                    if (cheerioElements.length > 0) {
+                        const firstEl = cheerioElements.first();
+                        const fingerprintData = {
+                            tagName: firstEl.prop('tagName') ? firstEl.prop('tagName').toLowerCase() : 'N/A',
+                            textSample: firstEl.text().substring(0, 150).trim(),
+                            attributes: Object.keys(firstEl.attr() || {}),
+                            selector: item.selector
+                        };
+                        const lookupKey = `${new URL(url).hostname}::${item.name}`;
+                        const { error } = await supabase.from('fingerprints').upsert({ lookup_key: lookupKey, fingerprint: fingerprintData });
+                        if(error) console.error("Gagal menyimpan sidik jari (Cheerio) ke Supabase:", error);
+                        else console.log(`Sidik jari (Cheerio) untuk '${lookupKey}' berhasil disimpan.`);
+                    } else {
+                        console.warn(`Fallback Cheerio juga gagal menemukan elemen untuk selector: ${item.selector}`);
+                    }
                 }
+
+                // Logika ekstraksi data (Tidak diubah)
                 const cheerioElements = $(item.selector);
                 if (cheerioElements.length === 0) {
                     throw new Error(`Selector '${item.selector}' tidak ditemukan di halaman.`);
@@ -217,7 +234,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
         }
 
     } catch (error) {
-        // Logika pemulihan darurat menggunakan Supabase (TETAP ADA)
         if (isRecovery) {
             console.error("Mode pemulihan gagal menemukan selector yang valid. Menghentikan proses.");
             throw error;
@@ -229,10 +245,14 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             const lookupKey = `${new URL(url).hostname}::${itemName}`;
             console.log(`Mencari ingatan di Supabase untuk kunci: ${lookupKey}`);
             const { data: savedMemory, error: dbError } = await supabase.from('fingerprints').select('fingerprint').eq('lookup_key', lookupKey).single();
-            if (dbError || !savedMemory) {
-                console.error("Tidak ada ingatan yang ditemukan di database untuk pemulihan:", dbError);
-                throw error;
+            
+            // PERUBAHAN #2: Memperkuat Logika Pengecekan Ingatan
+            if (!savedMemory) {
+                console.log("Mode pemulihan dibatalkan: Tidak ada ingatan yang tersimpan untuk kunci ini. Melemparkan kembali error asli.");
+                if (dbError) console.error("Detail error Supabase:", dbError.message);
+                throw error; // Melemparkan kembali error ASLI yang memicu mode pemulihan
             }
+
             console.log("Ingatan ditemukan! Meminta AI untuk mencari selector baru...");
             const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
             const recoveryPrompt = createEnhancedPrompt(instruction, url, bodyHTML, true, savedMemory.fingerprint);
@@ -259,7 +279,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
     }
 }
 
-// ================== ENDPOINTS EXPRESS (TETAP ADA) ==================
+// ================== ENDPOINTS EXPRESS (TIDAK DIUBAH) ==================
 
 app.post('/api/scrape', async (req, res) => {
     // PERUBAHAN: Menambahkan 'conversation_history'
@@ -349,7 +369,7 @@ app.post('/api/analyze-html', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vD.1 (Gabungan Cerdas) is running!');
+    res.send('AI Scraper API vD.2 (Pemulihan Stabil) is running!');
 });
 
 module.exports = app;
