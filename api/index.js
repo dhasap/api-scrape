@@ -1,6 +1,5 @@
-// api/index.js (Versi A.2 - Server Fix)
-// Perbaikan untuk ReferenceError: port is not defined dan merapikan struktur
-// agar sesuai dengan praktik terbaik Vercel Serverless Functions.
+// api/index.js (Versi A.3 - Model AI Fix)
+// Mengganti model AI ke gemini-1.5-flash untuk menghindari masalah kuota.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -16,9 +15,12 @@ puppeteer.use(StealthPlugin());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi A.2 - Server Fix)...');
+console.log('Menginisialisasi server (Versi A.3 - Model AI Fix)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const AI_MODEL_NAME = "gemini-1.5-pro-latest";
+
+// ================== PERBAIKAN: Mengganti model AI ==================
+const AI_MODEL_NAME = "gemini-1.5-flash-latest"; // Menggunakan Flash untuk kuota yang lebih besar
+// =================================================================
 
 if (!GEMINI_API_KEY) {
     console.error("KRITIS: API Key Gemini tidak ditemukan.");
