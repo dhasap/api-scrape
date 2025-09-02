@@ -1,7 +1,7 @@
-// api/index.js (Versi E.1 - Tahan Banting)
-// Menambahkan mekanisme coba lagi (retry) untuk panggilan AI dan menggunakan model spesifik.
+// api/index.js (Versi F.1 - Perbaikan Impor)
+// Memperbaiki kesalahan ketik pada impor library Express.
 require('dotenv').config();
-const express = 'express';
+const express = require('express'); // <-- PERBAIKAN: Menggunakan require untuk mengimpor library
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 const { createClient } = require('@supabase/supabase-js');
@@ -15,10 +15,9 @@ puppeteer.use(StealthPlugin());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi E.1 - Tahan Banting)...');
+console.log('Menginisialisasi server (Versi F.1 - Perbaikan Impor)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// PERUBAHAN #1: Menggunakan versi model yang spesifik untuk stabilitas
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
 if (!GEMINI_API_KEY) {
@@ -31,7 +30,7 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 
 
-// PERUBAHAN #2: Fungsi baru untuk menangani panggilan AI dengan mekanisme coba lagi
+// Fungsi baru untuk menangani panggilan AI dengan mekanisme coba lagi
 /**
  * Melakukan panggilan ke Google AI dengan mekanisme coba lagi (retry) jika server sibuk.
  * @param {GenerativeModel} model - Instance model AI.
@@ -69,7 +68,7 @@ async function generateContentWithRetry(model, prompt, retries = 3) {
  * ===================================================================================
  * FUNGSI UTAMA: PEMBUATAN PROMPT AI (createEnhancedPrompt)
  * ===================================================================================
- * Kode di bagian ini tidak diubah.
+ * Kode di bagian ini tidak diubah dari versi sebelumnya.
  */
 function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt = false, memory = null, conversationHistory = []) {
     // ================== PROMPT UNTUK MODE PEMULIHAN DARURAT (TETAP ADA) ==================
@@ -179,7 +178,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
         const finalPrompt = createEnhancedPrompt(instruction, url, bodyHTML, false, null, conversationHistory); 
         
-        // PERUBAHAN #3: Menggunakan fungsi baru yang tahan banting
         const result = await generateContentWithRetry(model, finalPrompt);
 
         let text = (await result.response).text();
@@ -291,7 +289,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
             const recoveryPrompt = createEnhancedPrompt(instruction, url, bodyHTML, true, savedMemory.fingerprint);
 
-            // PERUBAHAN #4: Menggunakan fungsi retry di mode pemulihan juga
             const result = await generateContentWithRetry(model, recoveryPrompt);
 
             let text = (await result.response).text();
@@ -319,7 +316,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
 // ================== ENDPOINTS EXPRESS (TIDAK DIUBAH) ==================
 
 app.post('/api/scrape', async (req, res) => {
-    // PERUBAHAN: Menambahkan 'conversation_history'
     const { url, instruction, conversation_history } = req.body;
     if (!url || !instruction) {
         return res.status(400).json({ error: 'URL dan instruksi diperlukan' });
@@ -333,7 +329,6 @@ app.post('/api/scrape', async (req, res) => {
 });
 
 app.post('/api/chain-scrape', async (req, res) => {
-    // Endpoint ini tetap sama, namun akan mendapat manfaat dari AI yang lebih baik
     let { url, instruction } = req.body;
     if (!url || !instruction) { return res.status(400).json({ error: 'URL dan instruksi diperlukan' }); }
     
@@ -360,7 +355,6 @@ app.post('/api/chain-scrape', async (req, res) => {
 });
 
 app.post('/api/analyze-html', async (req, res) => {
-    // Endpoint ini tetap sama, namun akan mendapat manfaat dari AI yang lebih baik
     const { html, instruction } = req.body;
     if (!html || !instruction) {
         return res.status(400).json({ error: 'Konten HTML dan instruksi diperlukan' });
@@ -369,7 +363,6 @@ app.post('/api/analyze-html', async (req, res) => {
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
         const prompt = createEnhancedPrompt(instruction, "local.html", html);
         
-        // PERUBAHAN #5: Menggunakan fungsi retry di endpoint ini juga
         const result = await generateContentWithRetry(model, prompt);
         
         const response = await result.response;
@@ -408,7 +401,7 @@ app.post('/api/analyze-html', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vE.1 (Tahan Banting) is running!');
+    res.send('AI Scraper API vF.1 (Perbaikan Impor) is running!');
 });
 
 module.exports = app;
