@@ -1,26 +1,23 @@
-// api/index.js (Versi A - Fondasi Kuat & AI Cerdas)
-// Menggabungkan semua fitur terbaik: Stealth, Fetcher Bertingkat, dan Ingatan Supabase
-// dengan sistem prompt yang diperbarui untuk kecerdasan maksimal.
+// api/index.js (Versi A.1 - Syntax Fix)
+// Perbaikan untuk SyntaxError yang menyebabkan crash server.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 const { createClient } = require('@supabase/supabase-js');
 
-// Fase 1: Menggunakan Puppeteer + Stealth untuk kemampuan Anti-Bot
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const sparticuz_chromium = require('@sparticuz/chromium');
 
 puppeteer.use(StealthPlugin());
 
-// Fase 3: Koneksi ke Supabase untuk "Ingatan" Jangka Panjang
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi A - Fondasi Kuat & AI Cerdas)...');
+console.log('Menginisialisasi server (Versi A.1 - Syntax Fix)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const AI_MODEL_NAME = "gemini-1.5-pro-latest"; // Menggunakan model Pro untuk tugas kompleks
+const AI_MODEL_NAME = "gemini-1.5-pro-latest";
 
 if (!GEMINI_API_KEY) {
     console.error("KRITIS: API Key Gemini tidak ditemukan.");
@@ -31,22 +28,15 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 
 /**
- * Ini adalah jantung dari "Otak AI".
- * Ia membangun sebuah prompt yang sangat detail untuk model AI,
- * memberikannya peran, aturan ketat, dan format output yang presisi.
- * @param {string} instruction - Instruksi asli dari pengguna.
- * @param {string} currentURL - URL halaman yang sedang dianalisis.
- * @param {string} bodyHTML - Konten HTML halaman.
- * @param {boolean} recoveryAttempt - Flag yang menandakan apakah ini mode pemulihan.
- * @param {object|null} memory - "Ingatan" dari Supabase untuk mode pemulihan.
- * @returns {string} - Prompt yang lengkap dan siap dikirim ke AI.
+ * Fungsi ini adalah jantung dari "Otak AI".
+ * Ia membangun sebuah prompt yang sangat detail untuk model AI.
  */
 function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt = false, memory = null) {
     // ================== PROMPT UNTUK MODE PEMULIHAN DARURAT ==================
     if (recoveryAttempt && memory) {
         return `
         PERHATIAN: ANDA DALAM MODE PEMULIHAN DARURAT.
-        Anda adalah AI spesialis pemulihan scraper. Misi Anda adalah menemukan selector CSS baru untuk sebuah elemen yang selector lamanya sudah tidak valid.
+        Misi Anda adalah menemukan selector CSS baru untuk sebuah elemen yang selector lamanya sudah tidak valid.
 
         **KONTEKS KEGAGALAN:**
         - Instruksi Awal Pengguna: "${instruction}"
@@ -58,91 +48,82 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
         - Dulu Memiliki Atribut Seperti: ${memory.attributes.join(', ')}
 
         **ATURAN ANDA DI MODE INI:**
-        1.  Abaikan instruksi awal pengguna. Fokus HANYA pada misi menemukan selector baru.
-        2.  Analisis seluruh HTML di bawah ini dengan teliti.
+        1.  Fokus HANYA pada misi menemukan selector baru.
+        2.  Analisis seluruh HTML di bawah ini.
         3.  Temukan satu elemen yang paling cocok dengan petunjuk dari "INGATAN".
-        4.  Respons Anda HARUS dan HANYA berupa JSON yang valid. Jangan ada teks atau penjelasan lain.
-        5.  Format JSON HARUS seperti ini: \`{"new_selector": "selector_css_baru_yang_paling_mirip_dan_stabil"}\`
+        4.  Respons Anda HARUS dan HANYA berupa JSON yang valid.
+        5.  Format JSON HARUS seperti ini: {"new_selector": "selector_css_baru_yang_paling_mirip_dan_stabil"}
 
         **HTML LENGKAP UNTUK DIANALISIS:**
-        \`\`\`html
         ${bodyHTML}
-        \`\`\`
         `;
     }
 
     // ================== PROMPT STANDAR UNTUK OPERASI NORMAL ==================
+    // PERBAIKAN: Menghapus karakter backtick (`) yang menyebabkan SyntaxError.
     return `
     Anda adalah "ScrapeMind", sebuah agen AI web scraping yang sangat canggih, logis, dan teliti.
     Misi utama Anda adalah menerjemahkan instruksi bahasa manusia menjadi perintah JSON yang presisi untuk dieksekusi oleh mesin scraper.
 
     **ATURAN UTAMA YANG TIDAK BOLEH DILANGGAR:**
-    -   **ATURAN #0 (PALING PENTING):** Respons Anda WAJIB berupa satu objek JSON yang valid. Jangan pernah menulis teks, salam, penjelasan, atau markdown (\`\`\`json) di luar JSON itu sendiri.
-    -   **ATURAN #1 (PRESISI):** Selalu cari selector CSS yang paling spesifik dan stabil. Prioritaskan ID (#), lalu class yang unik (.class-unik), dan hindari tag umum (seperti 'div' atau 'a') jika memungkinkan.
+    -   **ATURAN #0 (PALING PENTING):** Respons Anda WAJIB berupa satu objek JSON yang valid. Jangan pernah menulis teks, salam, penjelasan, atau markdown di luar JSON itu sendiri.
+    -   **ATURAN #1 (PRESISI):** Selalu cari selector CSS yang paling spesifik dan stabil. Prioritaskan ID (#), lalu class yang unik (.class-unik).
     -   **ATURAN #2 (URL ABSOLUT):** Saat melakukan navigasi, URL yang Anda berikan HARUS absolut. URL halaman saat ini adalah "${currentURL}". Jika Anda menemukan link relatif seperti "/chapter/5", Anda WAJIB menggabungkannya menjadi "${new URL('/chapter/5', currentURL).href}".
-    -   **ATURAN #3 (PIKIRKAN LANGKAH BERIKUTNYA):** Untuk navigasi, instruksi berikutnya harus jelas dan bisa dieksekusi. Contoh: "Setelah mengklik link chapter, ekstrak judul chapter dari tag h1".
+    -   **ATURAN #3 (PIKIRKAN LANGKAH BERIKUTNYA):** Untuk navigasi, instruksi berikutnya harus jelas dan bisa dieksekusi.
 
     **TIGA TINDAKAN YANG BISA ANDA AMBIL (PILIH SATU):**
 
     ---
     **1. TINDAKAN: "extract"**
-    * **Gunakan jika:** Pengguna meminta untuk MENGAMBIL, MENCARI, atau MENDAFTAR data dari halaman.
-    * **Struktur JSON WAJIB:**
-        \`\`\`json
+    * Gunakan jika: Pengguna meminta untuk MENGAMBIL, MENCARI, atau MENDAFTAR data dari halaman.
+    * Struktur JSON WAJIB:
         {
           "action": "extract",
           "items": [
             {
-              "name": "nama_data_yang_diminta_secara_spesifik",
-              "selector": "selector_css_paling_stabil_untuk_elemen_ini",
-              "type": "pilih_salah_satu_dari_opsi_di_bawah"
+              "name": "nama_data_yang_diminta",
+              "selector": "selector_css_paling_stabil",
+              "type": "pilih_salah_satu_opsi_di_bawah"
             }
           ]
         }
-        \`\`\`
-    * **Opsi untuk "type":**
-        * `'text'`: Untuk mengambil konten teks yang terlihat oleh manusia (contoh: "Chapter 1: The Beginning").
-        * `'href'`: KHUSUS untuk mendapatkan nilai dari atribut 'href' pada tag \`<a>\`.
-        * `'src'`: KHUSUS untuk mendapatkan nilai dari atribut 'src' pada tag \`<img>\`, \`<script>\`, dll.
+    * Opsi untuk "type":
+        * 'text': Untuk mengambil konten teks yang terlihat (contoh: "Chapter 1: The Beginning").
+        * 'href': KHUSUS untuk mendapatkan nilai dari atribut 'href' pada tag <a>.
+        * 'src': KHUSUS untuk mendapatkan nilai dari atribut 'src' pada tag <img>.
 
     ---
     **2. TINDAKAN: "navigate"**
-    * **Gunakan jika:** Pengguna meminta untuk PINDAH HALAMAN (klik link, pergi ke halaman berikutnya, dll).
-    * **Struktur JSON WAJIB:**
-        \`\`\`json
+    * Gunakan jika: Pengguna meminta untuk PINDAH HALAMAN (klik link, pergi ke halaman berikutnya, dll).
+    * Struktur JSON WAJIB:
         {
           "action": "navigate",
           "url": "url_absolut_dan_lengkap_hasil_resolusi_dari_ATURAN_2",
-          "instruction": "instruksi_baru_yang_jelas_dan_bisa_dieksekusi_untuk_halaman_tujuan"
+          "instruction": "instruksi_baru_yang_jelas_untuk_halaman_tujuan"
         }
-        \`\`\`
 
     ---
     **3. TINDAKAN: "respond"**
-    * **Gunakan jika:** Pengguna bertanya sesuatu yang bisa dijawab langsung dari teks, jika instruksi tidak jelas, atau JIKA DATA YANG DIMINTA TIDAK ADA di halaman.
-    * **Struktur JSON WAJIB:**
-        \`\`\`json
+    * Gunakan jika: Pengguna bertanya sesuatu, instruksi tidak jelas, atau DATA YANG DIMINTA TIDAK ADA.
+    * Struktur JSON WAJIB:
         {
           "action": "respond",
           "response": "jawaban_lengkap_dan_informatif_dalam_bentuk_teks"
         }
-        \`\`\`
     ---
 
     **PROSES BERPIKIR ANDA SEBELUM MENJAWAB:**
-    1.  Apa tujuan inti dari instruksi pengguna: mengambil data, pindah halaman, atau menjawab pertanyaan?
-    2.  Pilih satu dari tiga tindakan (\`extract\`, \`Maps\`, \`respond\`) yang paling sesuai.
-    3.  Jika \`extract\` atau \`Maps\`, identifikasi elemen target. Rancang selector CSS yang paling kuat dan tidak mudah rusak.
-    4.  Jika \`Maps\`, pastikan URL sudah absolut sesuai ATURAN #2.
-    5.  Konstruksi respons JSON dengan sangat hati-hati sesuai struktur yang diwajibkan.
+    1.  Apa tujuan inti instruksi pengguna: mengambil data, pindah halaman, atau menjawab pertanyaan?
+    2.  Pilih satu dari tiga tindakan.
+    3.  Jika 'extract' atau 'navigate', rancang selector CSS yang paling kuat.
+    4.  Jika 'navigate', pastikan URL sudah absolut.
+    5.  Konstruksi respons JSON dengan sangat hati-hati.
 
     **KONTEKS ANDA SAAT INI:**
     -   Instruksi Pengguna: "${instruction}"
     -   URL Saat Ini: "${currentURL}"
     -   HTML Halaman untuk Dianalisis:
-    \`\`\`html
-    ${bodyHTML}
-    \`\`\`
+        ${bodyHTML}
 
     Sekarang, laksanakan misi Anda. Berikan satu respons JSON yang valid.
     `;
@@ -154,7 +135,7 @@ async function navigateAndAnalyze(url, instruction, isRecovery = false) {
     let bodyHTML = '';
 
     try {
-        // Fase 2: Fetcher Bertingkat untuk efisiensi
+        // Fase 2: Fetcher Bertingkat
         try {
             console.log("Tier 1: Mencoba fetch standar (cepat & ringan)...");
             const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36' }});
@@ -176,11 +157,10 @@ async function navigateAndAnalyze(url, instruction, isRecovery = false) {
         }
     
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
-        const finalPrompt = createEnhancedPrompt(instruction, url, bodyHTML);
+        const finalPrompt = createEnhancedPrompt(instruction, url, bodyHTML); 
         const result = await model.generateContent(finalPrompt);
         let text = (await result.response).text();
 
-        // Membersihkan respons AI dari markdown
         if (text.startsWith("```json")) text = text.substring(7, text.length - 3).trim();
         const jsonResponse = JSON.parse(text);
 
@@ -188,8 +168,7 @@ async function navigateAndAnalyze(url, instruction, isRecovery = false) {
             const $ = cheerio.load(bodyHTML);
             const extractedData = {};
             
-            // Fase 3: Logika "Mengingat"
-            if (!page) { // Jika kita pakai fetch, butuh browser sementara untuk memindai
+            if (!page) { 
                 console.log("Membuka browser sementara untuk memindai & menyimpan sidik jari...");
                 if (!browser) {
                     const executablePath = await sparticuz_chromium.executablePath();
@@ -201,7 +180,6 @@ async function navigateAndAnalyze(url, instruction, isRecovery = false) {
 
             for (const item of jsonResponse.items) {
                 const elementHandle = await page.$(item.selector);
-                // Menyimpan sidik jari jika elemen ditemukan oleh Puppeteer
                 if (elementHandle) { 
                     const fingerprintData = {
                         tagName: await elementHandle.evaluate(el => el.tagName.toLowerCase()),
@@ -209,21 +187,15 @@ async function navigateAndAnalyze(url, instruction, isRecovery = false) {
                         attributes: await elementHandle.evaluate(el => Array.from(el.attributes, ({name}) => name)),
                         selector: item.selector
                     };
-
                     const lookupKey = `${new URL(url).hostname}::${item.name}`;
                     const { error } = await supabase.from('fingerprints').upsert({ lookup_key: lookupKey, fingerprint: fingerprintData });
-                    
                     if(error) console.error("Gagal menyimpan sidik jari ke Supabase:", error);
                     else console.log(`Sidik jari untuk '${lookupKey}' berhasil disimpan/diperbarui.`);
                 }
-
-                // Melakukan ekstraksi dengan Cheerio yang cepat
                 const cheerioElements = $(item.selector);
                 if (cheerioElements.length === 0) {
-                    // Jika Cheerio gagal, ini memicu error untuk masuk ke mode pemulihan
                     throw new Error(`Selector '${item.selector}' tidak ditemukan di halaman.`);
                 }
-
                 const data = [];
                 cheerioElements.each((i, el) => {
                     let value;
@@ -238,31 +210,26 @@ async function navigateAndAnalyze(url, instruction, isRecovery = false) {
         else if (jsonResponse.action === 'navigate') {
             return { status: 'success', action: 'navigate', url: jsonResponse.url, instruction: jsonResponse.instruction };
         } 
-        else { // action 'respond'
+        else {
              return { status: 'success', action: 'respond', response: jsonResponse.response };
         }
 
     } catch (error) {
-        // Fase 3: Logika "Memulihkan"
         if (isRecovery) {
             console.error("Mode pemulihan gagal menemukan selector yang valid. Menghentikan proses.");
-            throw error; // Lemparkan error asli setelah gagal pulih
+            throw error;
         }
-
         console.warn("Terjadi kesalahan, mencoba mode pemulihan...", error.message);
         const itemNameMatch = instruction.match(/dapatkan (\w+)|ekstrak (\w+)/i);
         if (itemNameMatch && bodyHTML) {
             const itemName = itemNameMatch[1] || itemNameMatch[2];
             const lookupKey = `${new URL(url).hostname}::${itemName}`;
             console.log(`Mencari ingatan di Supabase untuk kunci: ${lookupKey}`);
-
             const { data: savedMemory, error: dbError } = await supabase.from('fingerprints').select('fingerprint').eq('lookup_key', lookupKey).single();
-
             if (dbError || !savedMemory) {
                 console.error("Tidak ada ingatan yang ditemukan di database untuk pemulihan:", dbError);
-                throw error; // Lemparkan error asli jika tidak ada ingatan
+                throw error;
             }
-
             console.log("Ingatan ditemukan! Meminta AI untuk mencari selector baru...");
             const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
             const recoveryPrompt = createEnhancedPrompt(instruction, url, bodyHTML, true, savedMemory.fingerprint);
@@ -270,20 +237,17 @@ async function navigateAndAnalyze(url, instruction, isRecovery = false) {
             let text = (await result.response).text();
             if (text.startsWith("```json")) text = text.substring(7, text.length - 3).trim();
             const newSelectorJson = JSON.parse(text);
-
             if (newSelectorJson.new_selector) {
                 console.log(`Pemulihan berhasil! Selector baru: ${newSelectorJson.new_selector}. Mencoba ulang analisis...`);
-                // Membuat instruksi baru yang lebih spesifik untuk AI agar tidak salah lagi
                 const newInstruction = `Ekstrak data '${itemName}' dari halaman ini menggunakan selector '${newSelectorJson.new_selector}'`;
-                // Memanggil kembali fungsi ini dengan instruksi baru dan flag pemulihan
                 return navigateAndAnalyze(url, newInstruction, true); 
             } else {
                 console.error("AI tidak dapat menemukan selector baru dalam mode pemulihan.");
-                throw error; // Lemparkan error asli jika AI gagal
+                throw error;
             }
         }
         
-        throw error; // Lemparkan error asli jika tidak masuk ke logika pemulihan
+        throw error; 
     } finally {
         if (browser) {
             console.log("Menutup browser...");
@@ -293,9 +257,6 @@ async function navigateAndAnalyze(url, instruction, isRecovery = false) {
 }
 
 // ================== ENDPOINTS (TIDAK ADA PERUBAHAN) ==================
-// Semua endpoint Express di bawah ini tetap sama persis seperti kode asli Anda.
-// Mereka hanya berfungsi sebagai "pintu masuk" untuk memanggil fungsi utama 'navigateAndAnalyze'.
-
 app.post('/api/scrape', async (req, res) => {
     const { url, instruction } = req.body;
     if (!url || !instruction) {
@@ -311,7 +272,7 @@ app.post('/api/chain-scrape', async (req, res) => {
     const results = [];
     let currentUrl = url;
     let currentInstruction = instruction;
-    for (let i = 0; i < 10; i++) { // Maksimal 10 langkah untuk keamanan
+    for (let i = 0; i < 10; i++) {
         const result = await navigateAndAnalyze(currentUrl, currentInstruction);
         results.push(result);
         if (result.status === 'error' || result.action !== 'navigate') { break; }
@@ -334,7 +295,7 @@ app.post('/api/analyze-html', async (req, res) => {
     }
     try {
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
-        const prompt = createEnhancedPrompt(instruction, "local.html", html); // URL dummy untuk analisis lokal
+        const prompt = createEnhancedPrompt(instruction, "local.html", html);
         const result = await model.generateContent(prompt);
         const response = await result.response;
         let text = response.text();
@@ -378,4 +339,3 @@ app.listen(port, () => {
 });
 
 module.exports = app;
-
