@@ -1,7 +1,7 @@
-// api/index.js (Versi D.2 - Pemulihan Stabil)
-// Memperkenalkan fallback Cheerio untuk fingerprinting dan memperkuat logika pemulihan.
+// api/index.js (Versi E.1 - Tahan Banting)
+// Menambahkan mekanisme coba lagi (retry) untuk panggilan AI dan menggunakan model spesifik.
 require('dotenv').config();
-const express = require('express');
+const express = 'express';
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 const { createClient } = require('@supabase/supabase-js');
@@ -15,9 +15,11 @@ puppeteer.use(StealthPlugin());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi D.2 - Pemulihan Stabil)...');
+console.log('Menginisialisasi server (Versi E.1 - Tahan Banting)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const AI_MODEL_NAME = "gemini-1.5-flash-latest";
+
+// PERUBAHAN #1: Menggunakan versi model yang spesifik untuk stabilitas
+const AI_MODEL_NAME = "gemini-1.5-flash";
 
 if (!GEMINI_API_KEY) {
     console.error("KRITIS: API Key Gemini tidak ditemukan.");
@@ -27,6 +29,41 @@ if (!GEMINI_API_KEY) {
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const app = express();
 app.use(express.json({ limit: '50mb' }));
+
+
+// PERUBAHAN #2: Fungsi baru untuk menangani panggilan AI dengan mekanisme coba lagi
+/**
+ * Melakukan panggilan ke Google AI dengan mekanisme coba lagi (retry) jika server sibuk.
+ * @param {GenerativeModel} model - Instance model AI.
+ * @param {string} prompt - Prompt yang akan dikirim.
+ * @param {number} retries - Jumlah maksimal percobaan.
+ * @returns {Promise<GenerateContentResult>} - Hasil dari generateContent.
+ */
+async function generateContentWithRetry(model, prompt, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await model.generateContent(prompt);
+        } catch (error) {
+            // Periksa apakah ini error yang bisa dicoba lagi (server overloaded)
+            const errorMessage = error.toString();
+            if (errorMessage.includes("503") || errorMessage.toLowerCase().includes("overloaded")) {
+                if (i < retries - 1) {
+                    const delay = Math.pow(2, i) * 1000; // 1s, 2s, 4s, ...
+                    console.warn(`Panggilan AI gagal (percobaan ${i + 1}/${retries}): Server sibuk. Mencoba lagi dalam ${delay / 1000} detik...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    console.error(`Panggilan AI gagal setelah ${retries} percobaan. Menyerah.`);
+                    throw error; // Lemparkan error terakhir setelah semua percobaan gagal
+                }
+            } else {
+                // Jika ini error lain (misal: API key salah), langsung lemparkan
+                console.error("Panggilan AI gagal karena error yang tidak bisa dicoba lagi:", error);
+                throw error;
+            }
+        }
+    }
+}
+
 
 /**
  * ===================================================================================
@@ -62,7 +99,6 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
         `;
     }
 
-    // ================== PROMPT STANDAR BARU (DARI VERSI C.1) ==================
     const historyText = conversationHistory.map(turn => {
         if (turn.human) return `Human: ${turn.human}`;
         if (turn.ai) return `You: ${turn.ai}`;
@@ -140,10 +176,12 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             console.log("Tier 2: Sukses! Konten didapat menggunakan browser.");
         }
     
-        // Fase Analisis AI (Tidak diubah)
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
         const finalPrompt = createEnhancedPrompt(instruction, url, bodyHTML, false, null, conversationHistory); 
-        const result = await model.generateContent(finalPrompt);
+        
+        // PERUBAHAN #3: Menggunakan fungsi baru yang tahan banting
+        const result = await generateContentWithRetry(model, finalPrompt);
+
         let text = (await result.response).text();
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
@@ -164,9 +202,8 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             const extractedData = {};
             
             for (const item of jsonResponse.items) {
-                // PERUBAHAN #1: Logika Fingerprinting dengan Fallback Cheerio
+                // Logika Fingerprinting dengan Fallback Cheerio (Tidak diubah)
                 try {
-                    // Prioritas 1: Mencoba membuat sidik jari dengan Puppeteer
                     if (!page) { 
                         console.log("Membuka browser sementara untuk sidik jari Puppeteer...");
                         if (!browser) {
@@ -190,7 +227,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
                         else console.log(`Sidik jari (Puppeteer) untuk '${lookupKey}' berhasil disimpan.`);
                     }
                 } catch (puppeteerError) {
-                    // Prioritas 2: Fallback ke Cheerio jika Puppeteer gagal
                     console.warn(`Gagal membuat sidik jari dengan Puppeteer (${puppeteerError.message}), mencoba fallback Cheerio...`);
                     const cheerioElements = $(item.selector);
                     if (cheerioElements.length > 0) {
@@ -210,7 +246,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
                     }
                 }
 
-                // Logika ekstraksi data (Tidak diubah)
                 const cheerioElements = $(item.selector);
                 if (cheerioElements.length === 0) {
                     throw new Error(`Selector '${item.selector}' tidak ditemukan di halaman.`);
@@ -246,17 +281,19 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             console.log(`Mencari ingatan di Supabase untuk kunci: ${lookupKey}`);
             const { data: savedMemory, error: dbError } = await supabase.from('fingerprints').select('fingerprint').eq('lookup_key', lookupKey).single();
             
-            // PERUBAHAN #2: Memperkuat Logika Pengecekan Ingatan
             if (!savedMemory) {
                 console.log("Mode pemulihan dibatalkan: Tidak ada ingatan yang tersimpan untuk kunci ini. Melemparkan kembali error asli.");
                 if (dbError) console.error("Detail error Supabase:", dbError.message);
-                throw error; // Melemparkan kembali error ASLI yang memicu mode pemulihan
+                throw error;
             }
 
             console.log("Ingatan ditemukan! Meminta AI untuk mencari selector baru...");
             const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
             const recoveryPrompt = createEnhancedPrompt(instruction, url, bodyHTML, true, savedMemory.fingerprint);
-            const result = await model.generateContent(recoveryPrompt);
+
+            // PERUBAHAN #4: Menggunakan fungsi retry di mode pemulihan juga
+            const result = await generateContentWithRetry(model, recoveryPrompt);
+
             let text = (await result.response).text();
             if (text.startsWith("```json")) text = text.substring(7, text.length - 3).trim();
             const newSelectorJson = JSON.parse(text);
@@ -304,9 +341,8 @@ app.post('/api/chain-scrape', async (req, res) => {
     let currentUrl = url;
     let currentInstruction = instruction;
 
-    for (let i = 0; i < 10; i++) { // Maksimal 10 langkah untuk keamanan
+    for (let i = 0; i < 10; i++) {
         try {
-            // Note: chain-scrape tidak menggunakan riwayat percakapan agar setiap langkah independen
             const result = await navigateAndAnalyze(currentUrl, currentInstruction);
             results.push(result);
             if (result.status === 'error' || result.action !== 'navigate') { break; }
@@ -332,7 +368,10 @@ app.post('/api/analyze-html', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
         const prompt = createEnhancedPrompt(instruction, "local.html", html);
-        const result = await model.generateContent(prompt);
+        
+        // PERUBAHAN #5: Menggunakan fungsi retry di endpoint ini juga
+        const result = await generateContentWithRetry(model, prompt);
+        
         const response = await result.response;
         let text = response.text();
         
@@ -369,7 +408,7 @@ app.post('/api/analyze-html', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vD.2 (Pemulihan Stabil) is running!');
+    res.send('AI Scraper API vE.1 (Tahan Banting) is running!');
 });
 
 module.exports = app;
