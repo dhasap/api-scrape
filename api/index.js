@@ -1,7 +1,7 @@
-// api/index.js (Versi F.1 - Perbaikan Impor)
-// Memperbaiki kesalahan ketik pada impor library Express.
+// api/index.js (Versi G.1 - Validasi AI)
+// Menambahkan validasi untuk data dari AI guna mencegah error 'duplicate key'.
 require('dotenv').config();
-const express = require('express'); // <-- PERBAIKAN: Menggunakan require untuk mengimpor library
+const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 const { createClient } = require('@supabase/supabase-js');
@@ -15,7 +15,7 @@ puppeteer.use(StealthPlugin());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi F.1 - Perbaikan Impor)...');
+console.log('Menginisialisasi server (Versi G.1 - Validasi AI)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const AI_MODEL_NAME = "gemini-1.5-flash";
@@ -30,32 +30,23 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 
 
-// Fungsi baru untuk menangani panggilan AI dengan mekanisme coba lagi
-/**
- * Melakukan panggilan ke Google AI dengan mekanisme coba lagi (retry) jika server sibuk.
- * @param {GenerativeModel} model - Instance model AI.
- * @param {string} prompt - Prompt yang akan dikirim.
- * @param {number} retries - Jumlah maksimal percobaan.
- * @returns {Promise<GenerateContentResult>} - Hasil dari generateContent.
- */
+// Fungsi untuk menangani panggilan AI dengan mekanisme coba lagi (Tidak diubah)
 async function generateContentWithRetry(model, prompt, retries = 3) {
     for (let i = 0; i < retries; i++) {
         try {
             return await model.generateContent(prompt);
         } catch (error) {
-            // Periksa apakah ini error yang bisa dicoba lagi (server overloaded)
             const errorMessage = error.toString();
             if (errorMessage.includes("503") || errorMessage.toLowerCase().includes("overloaded")) {
                 if (i < retries - 1) {
-                    const delay = Math.pow(2, i) * 1000; // 1s, 2s, 4s, ...
+                    const delay = Math.pow(2, i) * 1000;
                     console.warn(`Panggilan AI gagal (percobaan ${i + 1}/${retries}): Server sibuk. Mencoba lagi dalam ${delay / 1000} detik...`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                 } else {
                     console.error(`Panggilan AI gagal setelah ${retries} percobaan. Menyerah.`);
-                    throw error; // Lemparkan error terakhir setelah semua percobaan gagal
+                    throw error;
                 }
             } else {
-                // Jika ini error lain (misal: API key salah), langsung lemparkan
                 console.error("Panggilan AI gagal karena error yang tidak bisa dicoba lagi:", error);
                 throw error;
             }
@@ -64,12 +55,7 @@ async function generateContentWithRetry(model, prompt, retries = 3) {
 }
 
 
-/**
- * ===================================================================================
- * FUNGSI UTAMA: PEMBUATAN PROMPT AI (createEnhancedPrompt)
- * ===================================================================================
- * Kode di bagian ini tidak diubah dari versi sebelumnya.
- */
+// Fungsi pembuatan prompt AI (Tidak diubah)
 function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt = false, memory = null, conversationHistory = []) {
     // ================== PROMPT UNTUK MODE PEMULIHAN DARURAT (TETAP ADA) ==================
     if (recoveryAttempt && memory) {
@@ -200,6 +186,12 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             const extractedData = {};
             
             for (const item of jsonResponse.items) {
+                // PERUBAHAN: Menambahkan validasi untuk setiap item dari AI
+                if (!item.name || typeof item.name !== 'string' || item.name.trim() === '') {
+                    console.warn("Melewatkan item dari AI karena tidak memiliki 'name' yang valid:", item);
+                    continue; // Lanjut ke item berikutnya, abaikan yang ini.
+                }
+
                 // Logika Fingerprinting dengan Fallback Cheerio (Tidak diubah)
                 try {
                     if (!page) { 
@@ -377,6 +369,11 @@ app.post('/api/analyze-html', async (req, res) => {
             const $ = cheerio.load(html);
             const extractedData = {};
             for (const item of jsonResponse.items) {
+                // Menambahkan validasi di sini juga untuk konsistensi
+                if (!item.name || typeof item.name !== 'string' || item.name.trim() === '') {
+                    console.warn("Melewatkan item dari AI di /analyze-html karena tidak memiliki 'name' yang valid:", item);
+                    continue;
+                }
                 const elements = $(item.selector);
                 const data = [];
                 elements.each((i, el) => {
@@ -401,7 +398,7 @@ app.post('/api/analyze-html', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vF.1 (Perbaikan Impor) is running!');
+    res.send('AI Scraper API vG.1 (Validasi AI) is running!');
 });
 
 module.exports = app;
