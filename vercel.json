@@ -11,5 +11,6 @@
       "dest": "api/index.js"
     }
   ],
-  "installCommand": "npm install --force"
+  "installCommand": "yarn install"
 }
+
