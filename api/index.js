@@ -1,5 +1,5 @@
-// api/index.js (Versi G.1 - Validasi AI)
-// Menambahkan validasi untuk data dari AI guna mencegah error 'duplicate key'.
+// api/index.js (Versi H.1 - Penyamaran Ditingkatkan)
+// Menambahkan argumen pada Puppeteer untuk melewati deteksi bot.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -15,7 +15,7 @@ puppeteer.use(StealthPlugin());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi G.1 - Validasi AI)...');
+console.log('Menginisialisasi server (Versi H.1 - Penyamaran Ditingkatkan)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const AI_MODEL_NAME = "gemini-1.5-flash";
@@ -153,8 +153,24 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             console.log("Tier 1: Sukses! Konten didapat tanpa menjalankan browser.");
         } catch (e) {
             console.log(`Tier 1 Gagal: ${e.message}. Menggunakan Tier 2 (Puppeteer)...`);
+            
+            // PERUBAHAN: Menambahkan argumen penyamaran pada puppeteer.launch
             const executablePath = await sparticuz_chromium.executablePath();
-            browser = await puppeteer.launch({ args: sparticuz_chromium.args, executablePath, headless: sparticuz_chromium.headless });
+            browser = await puppeteer.launch({
+                args: [
+                    ...sparticuz_chromium.args,
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-infobars',
+                    '--window-position=0,0',
+                    '--ignore-certifcate-errors',
+                    '--ignore-certifcate-errors-spki-list',
+                    '--user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"'
+                ],
+                executablePath,
+                headless: sparticuz_chromium.headless
+            });
+
             page = await browser.newPage();
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
             bodyHTML = await page.content();
@@ -186,10 +202,10 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             const extractedData = {};
             
             for (const item of jsonResponse.items) {
-                // PERUBAHAN: Menambahkan validasi untuk setiap item dari AI
+                // Validasi item dari AI (Tidak diubah)
                 if (!item.name || typeof item.name !== 'string' || item.name.trim() === '') {
                     console.warn("Melewatkan item dari AI karena tidak memiliki 'name' yang valid:", item);
-                    continue; // Lanjut ke item berikutnya, abaikan yang ini.
+                    continue; 
                 }
 
                 // Logika Fingerprinting dengan Fallback Cheerio (Tidak diubah)
@@ -398,7 +414,7 @@ app.post('/api/analyze-html', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vG.1 (Validasi AI) is running!');
+    res.send('AI Scraper API vH.1 (Penyamaran Ditingkatkan) is running!');
 });
 
 module.exports = app;
