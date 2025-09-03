@@ -1,5 +1,5 @@
-// api/index.js (Versi H.1 - Penyamaran Ditingkatkan)
-// Menambahkan argumen pada Puppeteer untuk melewati deteksi bot.
+// api/index.js (Versi I.1 - Menunggu Konten)
+// Menambahkan waitForSelector untuk memastikan konten halaman asli dimuat.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -15,7 +15,7 @@ puppeteer.use(StealthPlugin());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi H.1 - Penyamaran Ditingkatkan)...');
+console.log('Menginisialisasi server (Versi I.1 - Menunggu Konten)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const AI_MODEL_NAME = "gemini-1.5-flash";
@@ -154,7 +154,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
         } catch (e) {
             console.log(`Tier 1 Gagal: ${e.message}. Menggunakan Tier 2 (Puppeteer)...`);
             
-            // PERUBAHAN: Menambahkan argumen penyamaran pada puppeteer.launch
             const executablePath = await sparticuz_chromium.executablePath();
             browser = await puppeteer.launch({
                 args: [
@@ -173,6 +172,12 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
 
             page = await browser.newPage();
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+            
+            // PERUBAHAN: Menunggu elemen kunci muncul sebelum mengambil HTML
+            console.log("Menunggu konten halaman asli muncul (maks. 30 detik)...");
+            await page.waitForSelector('.list-update_items', { timeout: 30000 });
+            console.log("Konten halaman asli terdeteksi.");
+
             bodyHTML = await page.content();
             console.log("Tier 2: Sukses! Konten didapat menggunakan browser.");
         }
@@ -414,7 +419,7 @@ app.post('/api/analyze-html', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vH.1 (Penyamaran Ditingkatkan) is running!');
+    res.send('AI Scraper API vI.1 (Menunggu Konten) is running!');
 });
 
 module.exports = app;
