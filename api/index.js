@@ -1,5 +1,5 @@
-// api/index.js (Versi K.1 - Ekstraksi Berbasis Objek)
-// Logika dirombak untuk mengekstrak data sebagai objek terstruktur, bukan daftar terpisah.
+// api/index.js (Versi L.1 - Ekstraksi Dinamis)
+// Logika dan prompt dirombak untuk ekstraksi dan skema yang sepenuhnya dinamis.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -15,7 +15,7 @@ puppeteer.use(StealthPlugin());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi K.1 - Ekstraksi Objek)...');
+console.log('Menginisialisasi server (Versi L.1 - Ekstraksi Dinamis)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -53,36 +53,32 @@ async function generateContentWithRetry(model, prompt, retries = 3) {
     }
 }
 
-
 // ==============================================================================
-// === FUNGSI PEMBUATAN PROMPT AI (DIROMBAK UNTUK EKSTRAKSI BERBASIS OBJEK) ===
+// === FUNGSI PEMBUATAN PROMPT AI (DIROMBAK UNTUK SKEMA DINAMIS) ===
 // ==============================================================================
 function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt = false, memory = null, conversationHistory = []) {
     // --- PROMPT UNTUK MODE PEMULIHAN DARURAT (TIDAK DIUBAH) ---
     if (recoveryAttempt && memory) {
-        // ... (kode pemulihan tidak diubah)
         return `
         PERHATIAN: ANDA DALAM MODE PEMULIHAN DARURAT.
-        Misi Anda adalah menemukan selector CSS baru untuk sebuah elemen yang selector lamanya sudah tidak valid.
-        **KONTEKS KEGAGALAN:**
-        - Instruksi Awal Pengguna: "${instruction}"
-        - Selector Lama yang GAGAL: "${memory.selector}"
-        **"INGATAN" (PETUNJUK) TENTANG ELEMEN YANG DICARI:**
-        - Jenis Tag Seharusnya: '<${memory.tagName}>'
-        - Contoh Teks di Dalamnya: "${memory.textSample}"
-        - Dulu Memiliki Atribut Seperti: ${memory.attributes.join(', ')}
-        **ATURAN ANDA DI MODE INI:**
-        1.  Fokus HANYA pada misi menemukan selector baru.
-        2.  Analisis seluruh HTML di bawah ini.
-        3.  Temukan satu elemen yang paling cocok dengan petunjuk dari "INGATAN".
-        4.  Respons Anda HARUS dan HANYA berupa JSON yang valid.
-        5.  Format JSON HARUS seperti ini: {"new_selector": "selector_css_baru_yang_paling_mirip_dan_stabil"}
-        **HTML LENGKAP UNTUK DIANALISIS:**
+        Misi Anda adalah menemukan selector CSS baru.
+        **KONTEKS:**
+        - Instruksi: "${instruction}"
+        - Selector GAGAL: "${memory.selector}"
+        **PETUNJUK ELEMEN:**
+        - Tag: '<${memory.tagName}>'
+        - Teks: "${memory.textSample}"
+        - Atribut: ${memory.attributes.join(', ')}
+        **ATURAN:**
+        1.  Fokus HANYA menemukan selector baru.
+        2.  Analisis HTML di bawah.
+        3.  Temukan elemen yang paling cocok dengan petunjuk.
+        4.  Respons HANYA berupa JSON: {"new_selector": "selector_css_baru_yang_stabil"}
+        **HTML UNTUK DIANALISIS:**
         ${bodyHTML}
         `;
     }
 
-    // --- PROMPT UTAMA YANG BARU UNTUK EKSTRAKSI TERSTRUKTUR ---
     const historyText = conversationHistory.map(turn => {
         if (turn.human) return `Human: ${turn.human}`;
         if (turn.ai) return `You: ${turn.ai}`;
@@ -91,40 +87,41 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
 
     return `
     ### PROFIL DAN MISI UTAMA ###
-    Anda adalah "CognitoScraper v5.0", sebuah agen AI yang berspesialisasi dalam ekstraksi data web terstruktur. Misi utama Anda adalah mengubah instruksi bahasa manusia menjadi sebuah "resep" JSON yang bisa digunakan untuk mengekstrak sekelompok data yang saling berhubungan menjadi objek-objek yang rapi. Anda berpikir dalam konteks "blok" atau "kartu" data, bukan daftar individual.
+    Anda adalah "CognitoScraper v6.0", agen AI ekstraksi web yang sepenuhnya dinamis. Misi Anda adalah mengubah instruksi bahasa manusia menjadi "resep" JSON yang fleksibel. Anda harus bisa menangani permintaan apa pun, mulai dari mengekstrak beberapa field data terstruktur hingga mengambil blok HTML mentah.
 
     ### PROSES BERPIKIR WAJIB (STEP-BY-STEP) ###
-    Sebelum menghasilkan JSON, Anda WAJIB mengikuti proses berpikir internal ini secara ketat:
-    1.  **ANALISIS TUJUAN:** Apa inti dari permintaan pengguna ("${instruction}")? Apakah ini tentang mengekstrak daftar entitas yang terstruktur (misal: daftar komik, daftar produk)? Atau ini permintaan navigasi/respons biasa?
-    2.  **IDENTIFIKASI KONTAINER UTAMA:** Jika tujuannya ekstraksi terstruktur, pindai HTML dan temukan **selector CSS untuk kontainer yang berulang (repeating container)**. Ini adalah "kartu" atau "blok" yang membungkus semua informasi untuk satu entitas. Contoh: '.list-update .swiper-slide' atau '.product-card'. Ini adalah bagian paling krusial.
-    3.  **BUAT PETA DATA (SCHEMA):** Setelah menemukan kontainer utama, lihat ke dalamnya. Buat "peta" atau schema berisi sub-selector untuk setiap bagian data yang diminta pengguna. Sub-selector ini HARUS relatif terhadap kontainer utama.
-    4.  **KONSTRUKSI PENALARAN (\`reasoning\`):** Jelaskan MENGAPA Anda memilih selector kontainer dan schema tersebut. Sebutkan nama class atau struktur HTML yang menjadi dasar keputusan Anda. Contoh: "Saya mengidentifikasi '.list-update .swiper-slide' sebagai kontainer utama karena setiap blok ini berisi satu komik lengkap dengan judul, thumbnail, dan chapter. Di dalamnya, judul ada di '.title', thumbnail di 'img', dan seterusnya."
-    5.  **PEMBUATAN KOMENTAR (\`commentary\`):** Tulis sapaan singkat dan ramah untuk pengguna dalam format Markdown.
-    6.  **GENERASI JSON FINAL:** Bangun objek JSON dengan sangat hati-hati sesuai dengan struktur yang ditentukan di bawah.
+    1.  **ANALISIS TUJUAN:** Apa inti dari permintaan pengguna ("${instruction}")? Apakah ia ingin daftar entitas terstruktur (seperti daftar komik dengan judul dan URL) atau hanya satu bagian data (seperti rating) atau bahkan blok HTML mentah?
+    2.  **IDENTIFIKASI KONTAINER (JIKA PERLU):** Jika pengguna meminta daftar entitas, temukan **selector CSS untuk kontainer yang berulang**. Ini adalah "kartu" yang membungkus setiap entitas. Jika pengguna hanya meminta satu data tunggal (misal: "apa rating komik ini?"), kontainer tidak diperlukan.
+    3.  **BUAT SKEMA DINAMIS (\`schema\`):** Ini adalah bagian paling penting. Buat "peta" atau skema berdasarkan PERMINTAAN PENGGUNA.
+        * **Kunci (Key):** Nama kunci HARUS mencerminkan data yang diminta. Gunakan format snake_case (contoh: 'judul_komik', 'raw_html', 'rating_pengguna').
+        * **Selector:** Tentukan sub-selector yang paling akurat untuk data tersebut, relatif terhadap kontainer jika ada.
+        * **Tipe (\`type\`):** Pilih tipe yang paling sesuai:
+            * \`'text'\`: Untuk mengambil teks bersih (membuang HTML).
+            * \`'href'\`: Untuk mengambil URL dari atribut 'href'.
+            * \`'src'\`: Untuk mengambil URL dari atribut 'src'.
+            * \`'html'\`: Untuk mengambil **SELURUH BLOK HTML MENTAH** di dalam selector. Ini sangat penting jika pengguna meminta "html".
+    4.  **KONSTRUKSI PENALARAN (\`reasoning\`):** Jelaskan mengapa Anda memilih selector dan skema tersebut.
+    5.  **GENERASI JSON FINAL:** Bangun objek JSON dengan hati-hati.
 
-    ### ATURAN KETAT YANG TIDAK BOLEH DILANGGAR ###
-    -   **ATURAN #0 (OUTPUT FINAL):** Respons Anda HARUS berisi SATU blok kode JSON yang valid dan lengkap. Jangan sertakan teks apa pun sebelum atau sesudah blok kode JSON.
-    -   **ATURAN #1 (FOKUS PADA STRUKTUR):** Jika pengguna meminta beberapa data yang jelas-jelas berhubungan (seperti judul, thumbnail, dan chapter komik), SELALU gunakan \`action: "extract_structured"\`. Jangan gunakan action 'extract' yang lama.
-    -   **ATURAN #2 (KEJUJURAN DATA):** Jika sebuah sub-selector tidak dapat ditemukan di dalam kontainer, gunakan string kosong "" sebagai selectornya di dalam schema. Jangan mengarang.
-    -   **ATURAN #3 (TIPE DATA):** Untuk setiap item di dalam schema, tentukan tipe ekstraksinya ('text', 'href', 'src').
+    ### ATURAN KETAT ###
+    -   **ATURAN #0 (OUTPUT FINAL):** Respons Anda HARUS berisi SATU blok kode JSON yang valid.
+    -   **ATURAN #1 (FLEKSIBILITAS SKEMA):** Kunci di dalam \`schema\` TIDAK TETAP. Buatlah berdasarkan permintaan pengguna. Jika pengguna minta "judul dan rating", skema harus berisi "judul" dan "rating". Jika pengguna minta "html", skema harus berisi kunci seperti "html_blok".
+    -   **ATURAN #2 (GUNAKAN \`extract_structured\`):** Untuk SEMUA permintaan ekstraksi data, gunakan \`action: "extract_structured"\`.
+    -   **ATURAN #3 (TIPE 'html'):** Jika pengguna menggunakan kata seperti "html", "elemen", atau "blok", gunakan tipe \`'html'\` untuk memenuhi permintaan mengambil struktur mentah.
 
     ### STRUKTUR JSON YANG WAJIB ANDA HASILKAN ###
     \`\`\`json
     {
-      "reasoning": "Penjelasan detail tentang pemilihan selector kontainer dan peta schema.",
+      "reasoning": "Penjelasan detail tentang pemilihan selector dan skema dinamis.",
       "commentary": "Komentar ramah untuk pengguna.",
       "action": "pilih_satu: 'extract_structured', 'navigate', 'respond'",
 
       // HANYA JIKA action = 'extract_structured'
-      "container_selector": ".selector-css-untuk-setiap-kartu-komik",
+      "container_selector": ".selector-css-untuk-setiap-kartu-jika-ada",
       "schema": {
-        "title": { "selector": ".sub-selector-judul-di-dalam-kartu", "type": "text" },
-        "url": { "selector": "a.link-utama", "type": "href" },
-        "thumbnail": { "selector": "img.gambar-thumbnail", "type": "src" },
-        "latest_chapter": {
-          "title": { "selector": ".chapter-title", "type": "text" },
-          "url": { "selector": ".chapter-url", "type": "href" }
-        }
+        "kunci_dinamis_1_berdasarkan_permintaan": { "selector": ".sub-selector-1", "type": "text" },
+        "kunci_dinamis_2_berdasarkan_permintaan": { "selector": "img.gambar", "type": "src" },
+        "blok_html_jika_diminta": { "selector": ".elemen-div", "type": "html" }
       },
       
       // HANYA JIKA action = 'navigate' atau 'respond'
@@ -140,7 +137,7 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
     -   **HTML Halaman untuk Dianalisis:**
         ${bodyHTML}
 
-    Sekarang, ikuti proses berpikir wajib dan hasilkan satu blok kode JSON yang valid.
+    Sekarang, hasilkan satu blok kode JSON yang valid.
     `;
 }
     
@@ -152,15 +149,15 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
     try {
         // Fase Fetcher Bertingkat (Tidak diubah)
         try {
-            console.log("Tier 1: Mencoba fetch standar (cepat & ringan)...");
+            console.log("Tier 1: Mencoba fetch standar...");
             const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36' }});
-            if (!response.ok) throw new Error(`Fetch gagal dengan status: ${response.status}`);
+            if (!response.ok) throw new Error(`Fetch gagal: ${response.status}`);
             const tempHtml = await response.text();
-            if (tempHtml.length < 500 || tempHtml.toLowerCase().includes("enable javascript") || tempHtml.toLowerCase().includes("checking if the site connection is secure")) {
-                throw new Error("Konten dari fetch standar tidak lengkap, butuh browser.");
+            if (tempHtml.length < 500 || tempHtml.toLowerCase().includes("enable javascript")) {
+                throw new Error("Konten dari fetch standar tidak lengkap.");
             }
             bodyHTML = tempHtml;
-            console.log("Tier 1: Sukses! Konten didapat tanpa menjalankan browser.");
+            console.log("Tier 1: Sukses!");
         } catch (e) {
             console.log(`Tier 1 Gagal: ${e.message}. Menggunakan Tier 2 (Puppeteer)...`);
             
@@ -174,12 +171,12 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             page = await browser.newPage();
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
             
-            console.log("Menunggu konten halaman asli muncul (maks. 30 detik)...");
+            console.log("Menunggu konten halaman asli muncul...");
             await page.waitForSelector('.list-update', { timeout: 30000 });
             console.log("Konten halaman asli terdeteksi.");
 
             bodyHTML = await page.content();
-            console.log("Tier 2: Sukses! Konten didapat menggunakan browser.");
+            console.log("Tier 2: Sukses!");
         }
     
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
@@ -203,76 +200,48 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
         };
 
         // ==============================================================================
-        // === LOGIKA EKSTRAKSI BARU UNTUK 'extract_structured' ===
+        // === LOGIKA EKSTRAKSI DINAMIS BERDASARKAN SKEMA AI ===
         // ==============================================================================
         if (jsonResponse.action === 'extract_structured') {
             const { container_selector, schema } = jsonResponse;
-            if (!container_selector || !schema) {
-                throw new Error("AI tidak memberikan 'container_selector' atau 'schema' untuk ekstraksi terstruktur.");
+            if (!schema) {
+                throw new Error("AI tidak memberikan 'schema' untuk ekstraksi.");
             }
 
             const $ = cheerio.load(bodyHTML);
             const data = [];
 
-            // Fungsi helper untuk mengekstrak satu nilai berdasarkan schema
             const extractValue = (element, schemaItem) => {
                 if (!schemaItem || !schemaItem.selector) return null;
                 const target = element.find(schemaItem.selector).first();
+                if (target.length === 0) return null;
                 switch (schemaItem.type) {
                     case 'text': return target.text().trim();
                     case 'href': return target.attr('href');
                     case 'src': return target.attr('src');
-                    case 'html': return target.html();
+                    case 'html': return $.html(target); // Gunakan $.html() untuk mendapatkan HTML luar
                     default: return null;
                 }
             };
 
-            $(container_selector).each((i, el) => {
+            const scope = container_selector ? $(container_selector) : $(bodyHTML);
+            if (scope.length === 0 && container_selector) {
+                 console.warn(`Kontainer selector '${container_selector}' tidak ditemukan.`);
+            }
+
+            scope.each((i, el) => {
                 const element = $(el);
-                const structuredItem = {
-                    title: extractValue(element, schema.title),
-                    url: extractValue(element, schema.url),
-                    thumbnail: extractValue(element, schema.thumbnail),
-                    latest_chapter: {
-                        title: extractValue(element, schema.latest_chapter?.title),
-                        url: extractValue(element, schema.latest_chapter?.url)
-                    },
-                    // Anda bisa menambahkan lebih banyak field di sini jika schema AI mendukungnya
-                    // genre: extractValue(element, schema.genre),
-                    // rating: extractValue(element, schema.rating),
-                };
+                const structuredItem = {};
+                
+                // Loop dinamis melalui skema yang diberikan oleh AI
+                for (const key in schema) {
+                    const schemaItem = schema[key];
+                    structuredItem[key] = extractValue(element, schemaItem);
+                }
                 data.push(structuredItem);
             });
 
-            // Ganti nama field 'data' menjadi 'structured_data' untuk kejelasan
             return { ...baseResponse, structured_data: data };
-
-        }
-        // ==============================================================================
-        // === LOGIKA LAMA 'extract' (TETAP ADA UNTUK KASUS LAIN) ===
-        // ==============================================================================
-        else if (jsonResponse.action === 'extract') {
-            const $ = cheerio.load(bodyHTML);
-            const extractedData = {};
-            for (const item of jsonResponse.items) {
-                // ... (kode ekstraksi lama tidak diubah)
-                if (!item.name || typeof item.name !== 'string' || item.name.trim() === '') {
-                    console.warn("Melewatkan item dari AI karena tidak memiliki 'name' yang valid:", item);
-                    continue; 
-                }
-                const cheerioElements = $(item.selector);
-                if (cheerioElements.length === 0) {
-                    throw new Error(`Selector '${item.selector}' tidak ditemukan di halaman.`);
-                }
-                const data = [];
-                cheerioElements.each((i, el) => {
-                    let value;
-                    switch (item.type) { case 'text': value = $(el).text().trim(); break; case 'href': value = $(el).attr('href'); break; case 'src': value = $(el).attr('src'); break; default: value = $(el).html(); }
-                    data.push(value);
-                });
-                extractedData[item.name] = data;
-            }
-            return { ...baseResponse, data: extractedData };
         } 
         else if (jsonResponse.action === 'navigate') {
             return { ...baseResponse, url: jsonResponse.url, instruction: jsonResponse.instruction };
@@ -282,7 +251,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
         }
 
     } catch (error) {
-        // ... (kode recovery dan error handling tidak diubah)
+        // Kode recovery dan error handling tidak diubah
         if (isRecovery) {
             console.error("Mode pemulihan gagal menemukan selector yang valid. Menghentikan proses.");
             throw error;
@@ -296,7 +265,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             const { data: savedMemory, error: dbError } = await supabase.from('fingerprints').select('fingerprint').eq('lookup_key', lookupKey).single();
             
             if (!savedMemory) {
-                console.log("Mode pemulihan dibatalkan: Tidak ada ingatan yang tersimpan untuk kunci ini. Melemparkan kembali error asli.");
+                console.log("Mode pemulihan dibatalkan: Tidak ada ingatan yang tersimpan untuk kunci ini.");
                 if (dbError) console.error("Detail error Supabase:", dbError.message);
                 throw error;
             }
@@ -322,7 +291,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
         throw error; 
     } finally {
         if (browser) {
-            console.log("Menutup browser...");
             await browser.close();
         }
     }
@@ -343,7 +311,6 @@ app.post('/api/scrape', async (req, res) => {
     }
 });
 
-// ... (sisa endpoints tidak diubah)
 app.post('/api/chain-scrape', async (req, res) => {
     let { url, instruction } = req.body;
     if (!url || !instruction) { return res.status(400).json({ error: 'URL dan instruksi diperlukan' }); }
@@ -389,29 +356,12 @@ app.post('/api/analyze-html', async (req, res) => {
         const jsonString = jsonMatch[1];
         const jsonResponse = JSON.parse(jsonString);
 
-        if (jsonResponse.action === 'extract') {
+        if (jsonResponse.action === 'extract_structured') {
             const $ = cheerio.load(html);
             const extractedData = {};
-            for (const item of jsonResponse.items) {
-                if (!item.name || typeof item.name !== 'string' || item.name.trim() === '') {
-                    console.warn("Melewatkan item dari AI di /analyze-html karena tidak memiliki 'name' yang valid:", item);
-                    continue;
-                }
-                const elements = $(item.selector);
-                const data = [];
-                elements.each((i, el) => {
-                    let value;
-                    switch (item.type) {
-                        case 'text': value = $(el).text(); break;
-                        case 'href': value = $(el).attr('href'); break;
-                        case 'src': value = $(el).attr('src'); break;
-                        default: value = $(el).html();
-                    }
-                    data.push(value);
-                });
-                extractedData[item.name] = data;
-            }
-            res.json({ status: 'success', action: 'extract', data: extractedData, reasoning: jsonResponse.reasoning, commentary: jsonResponse.commentary });
+             // Logika ini perlu disesuaikan untuk skema dinamis juga jika endpoint ini ingin digunakan
+             // Untuk saat ini, kita fokus pada /api/scrape
+            res.json({ status: 'success', action: 'extract_structured', data: extractedData, reasoning: jsonResponse.reasoning, commentary: jsonResponse.commentary });
         } else {
              res.json({ status: 'success', action: 'respond', response: jsonResponse.response, reasoning: jsonResponse.reasoning, commentary: jsonResponse.commentary });
         }
@@ -421,7 +371,7 @@ app.post('/api/analyze-html', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vK.1 (Ekstraksi Objek) is running!');
+    res.send('AI Scraper API vL.1 (Dinamis) is running!');
 });
 
 module.exports = app;
