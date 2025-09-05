@@ -1,5 +1,5 @@
-// api/index.js (Versi V.1 - AI Navigator)
-// Mengimplementasikan arsitektur "Scraping Dua Langkah" untuk waitForSelector yang dinamis dan universal.
+// api/index.js (Versi W.1 - Jeda Waktu Cloudflare)
+// Menambahkan jeda waktu 5 detik untuk memberi kesempatan Cloudflare menyelesaikan validasi.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -32,7 +32,7 @@ puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/webgl.vendor')())
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi V.1 - AI Navigator)...');
+console.log('Menginisialisasi server (Versi W.1 - Jeda Waktu Cloudflare)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -48,7 +48,6 @@ app.use(express.json({ limit: '50mb' }));
 
 // Fungsi untuk menangani panggilan AI dengan mekanisme coba lagi (Tidak diubah)
 async function generateContentWithRetry(model, prompt, retries = 3) {
-    // ... (kode tidak diubah)
     for (let i = 0; i < retries; i++) {
         try {
             return await model.generateContent(prompt);
@@ -71,10 +70,7 @@ async function generateContentWithRetry(model, prompt, retries = 3) {
     }
 }
 
-// ==============================================================================
-// === BAGIAN BARU: FUNGSI DAN PROMPT UNTUK MISI PENGINTAIAN (RECONNAISSANCE) ===
-// ==============================================================================
-
+// Fungsi dan Prompt untuk Misi Pengintaian (Tidak diubah)
 function createReconPrompt(skeletalHtml) {
     return `
     ### PROFIL DAN MISI UTAMA ###
@@ -242,6 +238,11 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
             page = await browser.newPage();
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
             
+            // --- SOLUSI: JEDA WAKTU UNTUK CLOUDFLARE ---
+            console.log("Memberi waktu 5 detik bagi Cloudflare untuk menyelesaikan pemeriksaan...");
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Jeda 5 detik
+            console.log("Waktu tunggu selesai, melanjutkan proses.");
+
             // --- LANGKAH 1: MISI PENGINTAIAN ---
             const initialHtml = await page.content();
             console.log("Menjalankan Misi Pengintaian untuk menemukan kontainer konten dinamis...");
@@ -319,7 +320,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
         }
 
     } catch (error) {
-        // Mode pemulihan tidak diubah, namun mungkin kurang relevan sekarang
+        // Mode pemulihan tidak diubah
         console.warn("Terjadi kesalahan:", error.message);
         throw error;
     } finally {
@@ -407,7 +408,7 @@ app.post('/api/analyze-html', async (req, res) => {
 
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vV.1 (AI Navigator) is running!');
+    res.send('AI Scraper API vW.1 (Jeda Waktu) is running!');
 });
 
 module.exports = app;
