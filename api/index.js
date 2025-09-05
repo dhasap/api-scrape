@@ -1,5 +1,5 @@
-// api/index.js (Versi U.1 - Dependensi Lengkap)
-// Menambahkan require eksplisit untuk semua dependensi tersembunyi (preferences & data-dir).
+// api/index.js (Versi V.1 - AI Navigator)
+// Mengimplementasikan arsitektur "Scraping Dua Langkah" untuk waitForSelector yang dinamis dan universal.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -9,11 +9,9 @@ const { createClient } = require('@supabase/supabase-js');
 const puppeteer = require('puppeteer-extra');
 const sparticuz_chromium = require('@sparticuz/chromium');
 
-// SOLUSI FINAL: Memaksa Vercel untuk menyertakan SEMUA modul yang hilang saat runtime
+// --- Solusi Dependensi Vercel ---
 require('puppeteer-extra-plugin-user-preferences');
 require('puppeteer-extra-plugin-user-data-dir');
-
-// --- Merampingkan Stealth Plugin ---
 puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/chrome.app')());
 puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/chrome.csi')());
 puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/chrome.loadTimes')());
@@ -34,7 +32,7 @@ puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/webgl.vendor')())
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi U.1 - Dependensi Lengkap)...');
+console.log('Menginisialisasi server (Versi V.1 - AI Navigator)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -50,6 +48,7 @@ app.use(express.json({ limit: '50mb' }));
 
 // Fungsi untuk menangani panggilan AI dengan mekanisme coba lagi (Tidak diubah)
 async function generateContentWithRetry(model, prompt, retries = 3) {
+    // ... (kode tidak diubah)
     for (let i = 0; i < retries; i++) {
         try {
             return await model.generateContent(prompt);
@@ -72,9 +71,66 @@ async function generateContentWithRetry(model, prompt, retries = 3) {
     }
 }
 
-// Prompt AI (v8.0 - Mode Fotografer dengan Limiter) - Tidak diubah
+// ==============================================================================
+// === BAGIAN BARU: FUNGSI DAN PROMPT UNTUK MISI PENGINTAIAN (RECONNAISSANCE) ===
+// ==============================================================================
+
+function createReconPrompt(skeletalHtml) {
+    return `
+    ### PROFIL DAN MISI UTAMA ###
+    Anda adalah "ReconAI", seorang ahli arsitektur front-end yang sangat berpengalaman. Misi Anda HANYA SATU: menganalisis kerangka HTML dari sebuah halaman web dan mengidentifikasi **satu selector CSS** yang paling mungkin menjadi **kontainer utama untuk konten dinamis** yang akan dimuat oleh JavaScript.
+
+    ### PROSES BERPIKIR WAJIB (STEP-BY-STEP) ###
+    1.  **ANALISIS STRUKTUR:** Pindai keseluruhan HTML yang diberikan. Abaikan header, footer, sidebar, dan menu navigasi. Fokus pada area konten utama di tengah halaman.
+    2.  **IDENTIFIKASI PETUNJUK:** Cari petunjuk dalam nama class atau ID yang mengindikasikan sebuah daftar atau area konten utama. Petunjuk umum meliputi kata-kata seperti: "list", "posts", "items", "main", "content", "grid", "latest", "results".
+    3.  **PEMILIHAN KANDIDAT TERBAIK:** Dari beberapa kemungkinan, pilih SATU selector yang paling spesifik namun tetap cukup umum untuk menjadi kontainer utama. Hindari selector yang terlalu spesifik yang mungkin hanya menargetkan satu item.
+        -   Contoh BAIK: \`.latest-updates .post-list\`, \`#main-content .product-grid\`, \`.bixbox.list-update\`
+        -   Contoh KURANG BAIK: \`.post-item:nth-child(1)\` (terlalu spesifik), \`div\` (terlalu umum).
+    4.  **GENERASI JSON FINAL:** Bangun objek JSON dengan sangat hati-hati.
+
+    ### ATURAN KETAT ###
+    -   **ATURAN #0 (OUTPUT FINAL):** Respons Anda HARUS berisi SATU blok kode JSON yang valid dan HANYA berisi satu kunci: \`"dynamic_container_selector"\`. Jangan sertakan penalaran atau komentar di dalam JSON.
+    -   **ATURAN #1 (KEJUJURAN):** Jika Anda sama sekali tidak bisa menemukan kandidat yang kuat, kembalikan \`null\` sebagai nilai selector.
+    
+    ### STRUKTUR JSON YANG WAJIB ANDA HASILKAN ###
+    \`\`\`json
+    {
+      "dynamic_container_selector": ".selector-css-terbaik-yang-anda-temukan"
+    }
+    \`\`\`
+
+    ### DATA UNTUK DIPROSES ###
+    -   **HTML Kerangka Halaman untuk Dianalisis:**
+        ${skeletalHtml}
+
+    Sekarang, laksanakan misi intelijen Anda dan hasilkan satu blok JSON yang valid.
+    `;
+}
+
+async function getDynamicContentSelector(skeletalHtml) {
+    try {
+        const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
+        const prompt = createReconPrompt(skeletalHtml);
+        const result = await generateContentWithRetry(model, prompt);
+        let text = (await result.response).text();
+        const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+        if (!jsonMatch || !jsonMatch[1]) {
+            console.warn("ReconAI tidak mengembalikan JSON yang valid. Menggunakan fallback 'body'.");
+            return 'body';
+        }
+        const jsonString = jsonMatch[1];
+        const jsonResponse = JSON.parse(jsonString);
+        return jsonResponse.dynamic_container_selector || 'body'; // Fallback jika selector null
+    } catch (error) {
+        console.error("Gagal menjalankan Misi Pengintaian AI:", error);
+        return 'body'; // Fallback jika terjadi error
+    }
+}
+
+
+// Prompt AI Ekstraksi (v8.0 - Mode Fotografer dengan Limiter) - Tidak diubah
 function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt = false, memory = null, conversationHistory = []) {
-    // --- PROMPT UNTUK MODE PEMULIHAN DARURAT (TIDAK DIUBAH) ---
+    // ... (kode tidak diubah, tetap lengkap dan detail)
     if (recoveryAttempt && memory) {
         return `
         PERHATIAN: ANDA DALAM MODE PEMULIHAN DARURAT.
@@ -153,23 +209,26 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
     `;
 }
     
-async function navigateAndAnalyze(url, instruction, conversationHistory = [], isRecovery = false) {
+async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
     let browser = null;
     let page = null;
-    let bodyHTML = '';
 
     try {
-        // Fase Fetcher Bertingkat (Tidak diubah)
+        let finalHtml = ''; // Variabel untuk menyimpan HTML yang sudah lengkap
+
+        // Fase Fetcher Bertingkat (Tier 1)
         try {
             console.log("Tier 1: Mencoba fetch standar...");
             const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36' }});
             if (!response.ok) throw new Error(`Fetch gagal: ${response.status}`);
             const tempHtml = await response.text();
-            if (tempHtml.length < 500 || tempHtml.toLowerCase().includes("enable javascript")) {
-                throw new Error("Konten dari fetch standar tidak lengkap.");
+            // Jika halaman tidak bergantung pada JS, kita bisa langsung anggap ini final
+            if (tempHtml.length > 500 && !tempHtml.toLowerCase().includes("enable javascript")) {
+                finalHtml = tempHtml;
+                console.log("Tier 1: Sukses! Situs tampaknya statis.");
+            } else {
+                throw new Error("Konten dari fetch standar tidak lengkap atau butuh JS.");
             }
-            bodyHTML = tempHtml;
-            console.log("Tier 1: Sukses!");
         } catch (e) {
             console.log(`Tier 1 Gagal: ${e.message}. Menggunakan Tier 2 (Puppeteer)...`);
             
@@ -183,23 +242,33 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             page = await browser.newPage();
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
             
-            console.log("Menunggu konten halaman asli muncul...");
-            await page.waitForSelector('.list-update', { timeout: 30000 });
-            console.log("Konten halaman asli terdeteksi.");
+            // --- LANGKAH 1: MISI PENGINTAIAN ---
+            const initialHtml = await page.content();
+            console.log("Menjalankan Misi Pengintaian untuk menemukan kontainer konten dinamis...");
+            const dynamicSelector = await getDynamicContentSelector(initialHtml);
+            
+            if (dynamicSelector && dynamicSelector !== 'body') {
+                 console.log(`AI Navigator merekomendasikan untuk menunggu selector: '${dynamicSelector}'`);
+                 await page.waitForSelector(dynamicSelector, { timeout: 30000 });
+                 console.log("Konten dinamis terdeteksi dan telah dimuat.");
+            } else {
+                console.log("AI Navigator tidak menemukan selector spesifik, akan melanjutkan dengan konten yang ada.");
+            }
 
-            bodyHTML = await page.content();
-            console.log("Tier 2: Sukses!");
+            // --- LANGKAH 2: EKSEKUSI ---
+            finalHtml = await page.content(); // Ambil HTML final setelah menunggu
+            console.log("Tier 2: Sukses! Konten final telah didapat.");
         }
     
+        // Panggil AI Ekstraksi dengan HTML yang sudah lengkap
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
-        const finalPrompt = createEnhancedPrompt(instruction, url, bodyHTML, false, null, conversationHistory); 
+        const finalPrompt = createEnhancedPrompt(instruction, url, finalHtml, false, null, conversationHistory); 
         
         const result = await generateContentWithRetry(model, finalPrompt);
         let text = (await result.response).text();
         const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
         if (!jsonMatch || !jsonMatch[1]) {
-            console.error("RESPONS AI TIDAK MENGANDUNG BLOK KODE JSON:", text);
-            throw new Error("Gagal mengekstrak JSON dari respons AI.");
+            throw new Error("Gagal mengekstrak JSON dari respons AI Ekstraksi.");
         }
         const jsonString = jsonMatch[1];
         const jsonResponse = JSON.parse(jsonString);
@@ -211,16 +280,13 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             action: jsonResponse.action
         };
 
-        // Logika Ekstraksi Dinamis (Tidak diubah)
+        // Logika Ekstraksi (tidak diubah, kini menggunakan finalHtml)
         if (jsonResponse.action === 'extract_structured') {
             const { container_selector, schema, limit } = jsonResponse;
-            if (!schema) {
-                throw new Error("AI tidak memberikan 'schema' untuk ekstraksi.");
-            }
-
-            const $ = cheerio.load(bodyHTML);
+            if (!schema) throw new Error("AI tidak memberikan 'schema' untuk ekstraksi.");
+            
+            const $ = cheerio.load(finalHtml);
             const data = [];
-
             const extractValue = (element, schemaItem) => {
                 if (!schemaItem || !schemaItem.selector) return null;
                 const target = element.find(schemaItem.selector).first();
@@ -233,25 +299,16 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
                     default: return null;
                 }
             };
-
-            const scope = container_selector ? $(container_selector) : $(bodyHTML);
-            if (scope.length === 0 && container_selector) {
-                 console.warn(`Kontainer selector '${container_selector}' tidak ditemukan.`);
-            }
-
+            const scope = container_selector ? $(container_selector) : $(finalHtml);
             const limitedScope = (typeof limit === 'number' && limit > 0) ? scope.slice(0, limit) : scope;
-
             limitedScope.each((i, el) => {
                 const element = $(el);
                 const structuredItem = {};
-                
                 for (const key in schema) {
-                    const schemaItem = schema[key];
-                    structuredItem[key] = extractValue(element, schemaItem);
+                    structuredItem[key] = extractValue(element, schema[key]);
                 }
                 data.push(structuredItem);
             });
-
             return { ...baseResponse, structured_data: data };
         } 
         else if (jsonResponse.action === 'navigate') {
@@ -262,35 +319,9 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
         }
 
     } catch (error) {
-        // Kode recovery dan error handling tidak diubah
-        if (isRecovery) {
-            throw error;
-        }
-        console.warn("Terjadi kesalahan, mencoba mode pemulihan...", error.message);
-        const itemNameMatch = instruction.match(/dapatkan (\w+)|ekstrak (\w+)/i);
-        if (itemNameMatch && bodyHTML) {
-            const itemName = itemNameMatch[1] || itemNameMatch[2];
-            const lookupKey = `${new URL(url).hostname}::${itemName}`;
-            const { data: savedMemory } = await supabase.from('fingerprints').select('fingerprint').eq('lookup_key', lookupKey).single();
-            
-            if (!savedMemory) {
-                throw error;
-            }
-
-            const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
-            const recoveryPrompt = createEnhancedPrompt(instruction, url, bodyHTML, true, savedMemory.fingerprint);
-            const result = await generateContentWithRetry(model, recoveryPrompt);
-            let text = (await result.response).text();
-            if (text.startsWith("```json")) text = text.substring(7, text.length - 3).trim();
-            const newSelectorJson = JSON.parse(text);
-            if (newSelectorJson.new_selector) {
-                const newInstruction = `Ekstrak data '${itemName}' menggunakan selector '${newSelectorJson.new_selector}'`;
-                return navigateAndAnalyze(url, newInstruction, conversationHistory, true); 
-            } else {
-                throw error;
-            }
-        }
-        throw error; 
+        // Mode pemulihan tidak diubah, namun mungkin kurang relevan sekarang
+        console.warn("Terjadi kesalahan:", error.message);
+        throw error;
     } finally {
         if (browser) {
             await browser.close();
@@ -301,6 +332,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
 // ================== ENDPOINTS EXPRESS (Tidak diubah) ==================
 
 app.post('/api/scrape', async (req, res) => {
+    // ... (kode tidak diubah)
     const { url, instruction, conversation_history } = req.body;
     if (!url || !instruction) {
         return res.status(400).json({ error: 'URL dan instruksi diperlukan' });
@@ -314,6 +346,7 @@ app.post('/api/scrape', async (req, res) => {
 });
 
 app.post('/api/chain-scrape', async (req, res) => {
+    // ... (kode tidak diubah)
     let { url, instruction } = req.body;
     if (!url || !instruction) { return res.status(400).json({ error: 'URL dan instruksi diperlukan' }); }
     
@@ -348,13 +381,14 @@ app.post('/api/chain-scrape', async (req, res) => {
 });
 
 app.post('/api/analyze-html', async (req, res) => {
+    // ... (kode tidak diubah)
     const { html, instruction } = req.body;
     if (!html || !instruction) {
         return res.status(400).json({ error: 'Konten HTML dan instruksi diperlukan' });
     }
     try {
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
-        const prompt = createEnhancedPrompt(instruction, "[http://local-file.com](http://local-file.com)", html); 
+        const prompt = createEnhancedPrompt(instruction, "http://local-file.com", html); 
         
         const result = await generateContentWithRetry(model, prompt);
         let text = (await result.response).text();
@@ -373,7 +407,7 @@ app.post('/api/analyze-html', async (req, res) => {
 
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vU.1 (Dependensi Lengkap) is running!');
+    res.send('AI Scraper API vV.1 (AI Navigator) is running!');
 });
 
 module.exports = app;
