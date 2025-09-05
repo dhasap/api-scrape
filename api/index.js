@@ -1,5 +1,5 @@
-// api/index.js (Versi S.1 - Stealth Ramping)
-// Mengganti StealthPlugin borongan dengan impor selektif untuk mengatasi limit Vercel.
+// api/index.js (Versi T.1 - Final & Stabil)
+// Menambahkan require eksplisit untuk 'user-preferences' guna memastikan visibilitas modul di Vercel.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -9,9 +9,11 @@ const { createClient } = require('@supabase/supabase-js');
 const puppeteer = require('puppeteer-extra');
 const sparticuz_chromium = require('@sparticuz/chromium');
 
-// --- PERUBAHAN KUNCI: Merampingkan Stealth Plugin ---
-// Alih-alih memuat seluruh plugin, kita hanya memuat evasion yang paling penting.
-// Ini secara drastis mengurangi ukuran bundle dan mengatasi error di Vercel.
+// SOLUSI FINAL: Memaksa Vercel untuk menyertakan modul yang hilang saat runtime
+// Cukup dengan memanggilnya di sini, bundler Vercel akan menyertakannya.
+require('puppeteer-extra-plugin-user-preferences');
+
+// --- Merampingkan Stealth Plugin ---
 puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/chrome.app')());
 puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/chrome.csi')());
 puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/chrome.loadTimes')());
@@ -32,7 +34,7 @@ puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/webgl.vendor')())
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi S.1 - Stealth Ramping)...');
+console.log('Menginisialisasi server (Versi T.1 - Final & Stabil)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -371,7 +373,7 @@ app.post('/api/analyze-html', async (req, res) => {
 
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vS.1 (Stealth Ramping) is running!');
+    res.send('AI Scraper API vT.1 (Final & Stabil) is running!');
 });
 
 module.exports = app;
