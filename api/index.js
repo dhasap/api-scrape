@@ -1,5 +1,5 @@
-// api/index.js (Versi R.1 - Final Lengkap)
-// Menggabungkan arsitektur Q.1 (Limiter, Mode Jujur) dengan endpoint tambahan dari versi G.1.
+// api/index.js (Versi S.1 - Stealth Ramping)
+// Mengganti StealthPlugin borongan dengan impor selektif untuk mengatasi limit Vercel.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -7,15 +7,32 @@ const cheerio = require('cheerio');
 const { createClient } = require('@supabase/supabase-js');
 
 const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const sparticuz_chromium = require('@sparticuz/chromium');
 
-puppeteer.use(StealthPlugin());
+// --- PERUBAHAN KUNCI: Merampingkan Stealth Plugin ---
+// Alih-alih memuat seluruh plugin, kita hanya memuat evasion yang paling penting.
+// Ini secara drastis mengurangi ukuran bundle dan mengatasi error di Vercel.
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/chrome.app')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/chrome.csi')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/chrome.loadTimes')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/chrome.runtime')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/iframe.contentWindow')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/media.codecs')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/navigator.hardwareConcurrency')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/navigator.languages')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/navigator.permissions')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/navigator.plugins')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/navigator.vendor')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/navigator.webdriver')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/sourceurl')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/user-agent-override')());
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/webgl.vendor')());
+
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi R.1 - Final Lengkap)...');
+console.log('Menginisialisasi server (Versi S.1 - Stealth Ramping)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -53,7 +70,7 @@ async function generateContentWithRetry(model, prompt, retries = 3) {
     }
 }
 
-// Prompt AI (v8.0 - Mode Fotografer dengan Limiter) - Dipertahankan sebagai yang tercanggih
+// Prompt AI (v8.0 - Mode Fotografer dengan Limiter) - Tidak diubah
 function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt = false, memory = null, conversationHistory = []) {
     // --- PROMPT UNTUK MODE PEMULIHAN DARURAT (TIDAK DIUBAH) ---
     if (recoveryAttempt && memory) {
@@ -192,9 +209,9 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             action: jsonResponse.action
         };
 
-        // Logika Ekstraksi Dinamis
+        // Logika Ekstraksi Dinamis (Tidak diubah)
         if (jsonResponse.action === 'extract_structured') {
-            const { container_selector, schema, limit } = jsonResponse; // Ambil limit dari respons AI
+            const { container_selector, schema, limit } = jsonResponse;
             if (!schema) {
                 throw new Error("AI tidak memberikan 'schema' untuk ekstraksi.");
             }
@@ -210,7 +227,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
                     case 'text': return target.text().trim();
                     case 'href': return target.attr('href');
                     case 'src': return target.attr('src');
-                    case 'html': return target.html(); // Mengambil Inner HTML
+                    case 'html': return target.html();
                     default: return null;
                 }
             };
@@ -220,7 +237,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
                  console.warn(`Kontainer selector '${container_selector}' tidak ditemukan.`);
             }
 
-            // Terapkan limit
             const limitedScope = (typeof limit === 'number' && limit > 0) ? scope.slice(0, limit) : scope;
 
             limitedScope.each((i, el) => {
@@ -280,7 +296,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
     }
 }
 
-// ================== ENDPOINTS EXPRESS (Diperluas dengan Fitur dari G.1) ==================
+// ================== ENDPOINTS EXPRESS (Tidak diubah) ==================
 
 app.post('/api/scrape', async (req, res) => {
     const { url, instruction, conversation_history } = req.body;
@@ -355,7 +371,7 @@ app.post('/api/analyze-html', async (req, res) => {
 
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vR.1 (Final Lengkap) is running!');
+    res.send('AI Scraper API vS.1 (Stealth Ramping) is running!');
 });
 
 module.exports = app;
