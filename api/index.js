@@ -1,5 +1,5 @@
-// api/index.js (Versi M.1 - Mode Fotografer/Jujur)
-// Prompt dirombak total untuk menghasilkan output yang jujur, mentah, dan merefleksikan HTML asli.
+// api/index.js (Versi P.1 - Final Gabungan)
+// Menggabungkan arsitektur N.1 (Inner HTML, Mode Jujur) dengan endpoint tambahan dari G.1 (chain-scrape, analyze-html).
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -15,7 +15,7 @@ puppeteer.use(StealthPlugin());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi M.1 - Mode Jujur)...');
+console.log('Menginisialisasi server (Versi P.1 - Final Gabungan)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -53,9 +53,7 @@ async function generateContentWithRetry(model, prompt, retries = 3) {
     }
 }
 
-// ==============================================================================
-// === FUNGSI PEMBUATAN PROMPT AI (DIROMBAK TOTAL UNTUK "KEJUJURAN DATA") ===
-// ==============================================================================
+// Prompt AI (v7.0 - Mode Fotografer/Jujur) - Dipertahankan dari N.1
 function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt = false, memory = null, conversationHistory = []) {
     // --- PROMPT UNTUK MODE PEMULIHAN DARURAT (TIDAK DIUBAH) ---
     if (recoveryAttempt && memory) {
@@ -146,7 +144,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
     let bodyHTML = '';
 
     try {
-        // Fase Fetcher Bertingkat (Tidak diubah)
+        // Fase Fetcher Bertingkat (Dipertahankan dari N.1)
         try {
             console.log("Tier 1: Mencoba fetch standar...");
             const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36' }});
@@ -198,7 +196,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             action: jsonResponse.action
         };
 
-        // Logika Ekstraksi Dinamis (Tidak perlu diubah, sudah mendukung 'html')
+        // Logika Ekstraksi Dinamis (Dipertahankan dari N.1)
         if (jsonResponse.action === 'extract_structured') {
             const { container_selector, schema } = jsonResponse;
             if (!schema) {
@@ -216,7 +214,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
                     case 'text': return target.text().trim();
                     case 'href': return target.attr('href');
                     case 'src': return target.attr('src');
-                    case 'html': return $.html(target); // Mengambil HTML luar dari elemen
+                    case 'html': return target.html(); // Mengambil Inner HTML
                     default: return null;
                 }
             };
@@ -283,8 +281,9 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
     }
 }
 
-// ================== ENDPOINTS EXPRESS (TIDAK DIUBAH) ==================
+// ================== ENDPOINTS EXPRESS (Diperluas dengan Fitur dari G.1) ==================
 
+// Endpoint utama, tidak diubah
 app.post('/api/scrape', async (req, res) => {
     const { url, instruction, conversation_history } = req.body;
     if (!url || !instruction) {
@@ -298,8 +297,75 @@ app.post('/api/scrape', async (req, res) => {
     }
 });
 
+// BARU: Endpoint /chain-scrape dari G.1, diadaptasi untuk N.1
+app.post('/api/chain-scrape', async (req, res) => {
+    let { url, instruction } = req.body;
+    if (!url || !instruction) { return res.status(400).json({ error: 'URL dan instruksi diperlukan' }); }
+    
+    const results = [];
+    let currentUrl = url;
+    let currentInstruction = instruction;
+    const conversationHistory = []; // Chain scrape memulai histori baru
+
+    for (let i = 0; i < 10; i++) { // Batasi 10 langkah untuk keamanan
+        try {
+            console.log(`Chain scrape langkah ke-${i+1}: URL=${currentUrl}`);
+            const result = await navigateAndAnalyze(currentUrl, currentInstruction, conversationHistory);
+            results.push(result);
+
+            // Update history untuk langkah selanjutnya
+            conversationHistory.push({ human: currentInstruction });
+            conversationHistory.push({ ai: result.commentary || "Melanjutkan navigasi." });
+
+
+            if (result.status === 'error' || result.action !== 'navigate' || !result.url) {
+                console.log("Chain scrape berhenti: Aksi bukan navigasi atau error.");
+                break;
+            }
+            
+            // Siapkan untuk iterasi berikutnya
+            currentUrl = new URL(result.url, currentUrl).href;
+            currentInstruction = result.instruction || "Lanjutkan analisis di halaman baru ini.";
+            
+        } catch(error) {
+            results.push({ status: 'error', message: `Langkah ke-${i+1} gagal: ${error.message}` });
+            break;
+        }
+    }
+    res.json({ status: 'completed', steps: results });
+});
+
+// BARU: Endpoint /analyze-html dari G.1, diadaptasi untuk N.1
+app.post('/api/analyze-html', async (req, res) => {
+    const { html, instruction } = req.body;
+    if (!html || !instruction) {
+        return res.status(400).json({ error: 'Konten HTML dan instruksi diperlukan' });
+    }
+    try {
+        const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
+        // Menggunakan prompt yang sama dengan /scrape untuk konsistensi
+        const prompt = createEnhancedPrompt(instruction, "[http://local-file.com](http://local-file.com)", html); 
+        
+        const result = await generateContentWithRetry(model, prompt);
+        let text = (await result.response).text();
+        const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+        if (!jsonMatch || !jsonMatch[1]) { throw new Error("Gagal mengekstrak JSON dari respons AI."); }
+        
+        const jsonString = jsonMatch[1];
+        const jsonResponse = JSON.parse(jsonString);
+
+        // Langsung kembalikan respons AI karena kita tidak bisa menjalankan Cheerio tanpa URL asli
+        // Pengguna bisa mengambil schema dari sini dan memprosesnya sendiri jika perlu
+        res.json({ status: 'success', ...jsonResponse });
+
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message, stack: error.stack });
+    }
+});
+
+
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vM.1 (Jujur) is running!');
+    res.send('AI Scraper API vP.1 (Final Gabungan) is running!');
 });
 
 module.exports = app;
