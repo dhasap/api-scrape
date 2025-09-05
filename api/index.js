@@ -1,5 +1,5 @@
-// api/index.js (Versi T.1 - Final & Stabil)
-// Menambahkan require eksplisit untuk 'user-preferences' guna memastikan visibilitas modul di Vercel.
+// api/index.js (Versi U.1 - Dependensi Lengkap)
+// Menambahkan require eksplisit untuk semua dependensi tersembunyi (preferences & data-dir).
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -9,9 +9,9 @@ const { createClient } = require('@supabase/supabase-js');
 const puppeteer = require('puppeteer-extra');
 const sparticuz_chromium = require('@sparticuz/chromium');
 
-// SOLUSI FINAL: Memaksa Vercel untuk menyertakan modul yang hilang saat runtime
-// Cukup dengan memanggilnya di sini, bundler Vercel akan menyertakannya.
+// SOLUSI FINAL: Memaksa Vercel untuk menyertakan SEMUA modul yang hilang saat runtime
 require('puppeteer-extra-plugin-user-preferences');
+require('puppeteer-extra-plugin-user-data-dir');
 
 // --- Merampingkan Stealth Plugin ---
 puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/chrome.app')());
@@ -34,7 +34,7 @@ puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/webgl.vendor')())
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi T.1 - Final & Stabil)...');
+console.log('Menginisialisasi server (Versi U.1 - Dependensi Lengkap)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -373,7 +373,7 @@ app.post('/api/analyze-html', async (req, res) => {
 
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vT.1 (Final & Stabil) is running!');
+    res.send('AI Scraper API vU.1 (Dependensi Lengkap) is running!');
 });
 
 module.exports = app;
