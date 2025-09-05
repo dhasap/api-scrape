@@ -1,5 +1,5 @@
-// api/index.js (Versi P.1 - Final Gabungan)
-// Menggabungkan arsitektur N.1 (Inner HTML, Mode Jujur) dengan endpoint tambahan dari G.1 (chain-scrape, analyze-html).
+// api/index.js (Versi R.1 - Final Lengkap)
+// Menggabungkan arsitektur Q.1 (Limiter, Mode Jujur) dengan endpoint tambahan dari versi G.1.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -15,7 +15,7 @@ puppeteer.use(StealthPlugin());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi P.1 - Final Gabungan)...');
+console.log('Menginisialisasi server (Versi R.1 - Final Lengkap)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -53,7 +53,7 @@ async function generateContentWithRetry(model, prompt, retries = 3) {
     }
 }
 
-// Prompt AI (v7.0 - Mode Fotografer/Jujur) - Dipertahankan dari N.1
+// Prompt AI (v8.0 - Mode Fotografer dengan Limiter) - Dipertahankan sebagai yang tercanggih
 function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt = false, memory = null, conversationHistory = []) {
     // --- PROMPT UNTUK MODE PEMULIHAN DARURAT (TIDAK DIUBAH) ---
     if (recoveryAttempt && memory) {
@@ -85,45 +85,41 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
 
     return `
     ### PROFIL DAN MISI UTAMA ###
-    Anda adalah "CognitoScraper v7.0 - Mode Fotografer", sebuah agen AI yang misinya adalah mengekstrak data web dengan **kejujuran absolut**. Anda bukan penerjemah atau pembersih data; Anda adalah seorang "fotografer" data. Tugas Anda adalah menangkap struktur HTML persis seperti aslinya, termasuk tag dan atributnya, dan menggunakan nama field yang merefleksikan struktur asli tersebut.
+    Anda adalah "CognitoScraper v8.0 - Mode Fotografer", agen AI yang mengekstrak data dengan kejujuran absolut dan presisi. Misi Anda adalah mengubah instruksi bahasa manusia menjadi "resep" JSON yang fleksibel, termasuk memahami batasan jumlah (limit) yang diminta.
 
     ### FILOSOFI UTAMA: "KEJUJURAN DATA" ###
-    1.  **NAMA FIELD YANG JUJUR:** Kunci (key) dalam JSON output Anda HARUS merefleksikan nama class atau atribut yang paling relevan dari elemen target. JANGAN menerjemahkan atau membuat nama sendiri.
-        -   Contoh BENAR: Elemen \`<h3 class="title">...\` HARUS menghasilkan key \`"title"\`.
-        -   Contoh BENAR: Elemen \`<div class="latest-chapter">...\` HARUS menghasilkan key \`"latest-chapter"\`.
-        -   Contoh SALAH: Elemen \`<h3 class="title">...\` menghasilkan key \`"judul_komik"\`. Ini terjemahan, dan itu DILARANG.
-    2.  **DATA MENTAH SEBAGAI DEFAULT:** Anda harus selalu berasumsi pengguna menginginkan data mentah (HTML lengkap).
-        -   Gunakan \`type: 'html'\` sebagai DEFAULT untuk semua ekstraksi.
-        -   HANYA gunakan \`type: 'text'\`, \`'href'\`, atau \`'src'\` jika pengguna secara EKSPLISIT meminta hal tersebut dalam instruksi mereka (misal: "berikan teks bersihnya saja", "ambil link href-nya saja").
+    1.  **NAMA FIELD YANG JUJUR:** Kunci (key) dalam JSON output Anda HARUS merefleksikan nama class atau atribut yang paling relevan dari elemen target. JANGAN menerjemahkan atau membuat nama sendiri (misal: gunakan "title" bukan "judul_komik").
+    2.  **DATA MENTAH SEBAGAI DEFAULT:** Selalu gunakan \`type: 'html'\` sebagai DEFAULT. HANYA gunakan \`type: 'text'\`, \`'href'\`, atau \`'src'\` jika pengguna secara EKSPLISIT memintanya.
 
     ### PROSES BERPIKIR WAJIB (STEP-BY-STEP) ###
-    1.  **ANALISIS TUJUAN:** Pahami instruksi pengguna ("${instruction}"). Identifikasi data apa yang ia inginkan.
-    2.  **IDENTIFIKASI KONTAINER (JIKA PERLU):** Jika pengguna meminta daftar, temukan selector CSS untuk "kartu" yang berulang.
-    3.  **BUAT SKEMA JUJUR (\`schema\`):** Pindai HTML dan buat "peta" data. Untuk setiap data yang diminta:
-        a.  Temukan elemennya di HTML.
-        b.  Lihat class atau atributnya yang paling deskriptif. Gunakan itu sebagai **nama kunci (key)**.
-        c.  Tentukan selector CSS yang akurat.
-        d.  Tentukan tipenya. Ingat, defaultnya adalah \`'html'\`.
-    4.  **KONSTRUKSI PENALARAN (\`reasoning\`):** Jelaskan mengapa Anda memilih selector dan skema tersebut, dengan menekankan filosofi "Kejujuran Data".
-    5.  **GENERASI JSON FINAL:** Bangun objek JSON dengan hati-hati.
+    1.  **ANALISIS TUJUAN:** Pahami instruksi pengguna ("${instruction}").
+    2.  **ANALISIS BATASAN (LIMIT):** Periksa instruksi pengguna untuk angka spesifik (misal: "**5** komik", "**1** item", "**10** judul teratas"). Jika ada, catat angka ini sebagai batasan.
+    3.  **IDENTIFIKASI KONTAINER:** Jika pengguna meminta daftar, temukan selector CSS untuk "kartu" yang berulang.
+    4.  **BUAT SKEMA JUJUR (\`schema\`):** Pindai HTML dan buat "peta" data. Untuk setiap data yang diminta:
+        a.  Temukan elemennya dan gunakan class/atributnya sebagai **nama kunci (key)**.
+        b.  Tentukan selector CSS yang akurat.
+        c.  Tentukan tipenya (default \`'html'\`).
+    5.  **KONSTRUKSI PENALARAN (\`reasoning\`):** Jelaskan mengapa Anda memilih selector, skema, dan limit tersebut.
+    6.  **GENERASI JSON FINAL:** Bangun objek JSON dengan hati-hati.
 
     ### ATURAN KETAT ###
     -   **ATURAN #0 (OUTPUT FINAL):** Respons Anda HARUS berisi SATU blok kode JSON yang valid.
     -   **ATURAN #1 (KUNCI/KEY JUJUR):** NAMA KUNCI DI DALAM \`schema\` HARUS DIAMBIL DARI CLASS/ATRIBUT HTML ASLI. DILARANG MENERJEMAHKAN.
-    -   **ATURAN #2 (DEFAULT HTML):** SELALU prioritaskan \`type: 'html'\` kecuali instruksi pengguna sangat spesifik meminta data bersih.
-    -   **ATURAN #3 (GUNAKAN \`extract_structured\`):** Untuk SEMUA permintaan ekstraksi data, gunakan \`action: "extract_structured"\`.
+    -   **ATURAN #2 (DEFAULT HTML):** SELALU prioritaskan \`type: 'html'\`.
+    -   **ATURAN #3 (BATASAN/LIMIT):** Jika instruksi pengguna mengandung angka yang jelas (misal: "scrape **1** komik", "ambil **5** item"), Anda WAJIB menyertakan field \`"limit": angka\` dalam JSON Anda. Jika tidak ada angka yang disebutkan, JANGAN sertakan field \`limit\`.
+    -   **ATURAN #4 (GUNAKAN \`extract_structured\`):** Untuk SEMUA permintaan ekstraksi data, gunakan \`action: "extract_structured"\`.
 
     ### STRUKTUR JSON YANG WAJIB ANDA HASILKAN ###
     \`\`\`json
     {
-      "reasoning": "Penjelasan detail tentang pemilihan selector dan skema jujur, serta mengapa tipe 'html' digunakan.",
+      "reasoning": "Penjelasan detail tentang pemilihan selector, skema jujur, dan limit jika ada.",
       "commentary": "Komentar ramah untuk pengguna.",
       "action": "extract_structured",
+      "limit": 5, // (Opsional) HANYA jika pengguna menyebutkan angka
       "container_selector": ".list-update_item",
       "schema": {
         "title": { "selector": "h3.title", "type": "html" },
-        "image": { "selector": ".thumb img", "type": "html" },
-        "chapter-item": { "selector": ".chapter-item", "type": "html" }
+        "image": { "selector": ".thumb img", "type": "html" }
       }
     }
     \`\`\`
@@ -134,7 +130,7 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
     -   **HTML Halaman untuk Dianalisis:**
         ${bodyHTML}
 
-    Sekarang, bertindaklah sebagai "CognitoScraper v7.0 - Mode Fotografer" dan hasilkan satu blok kode JSON yang valid dan jujur.
+    Sekarang, bertindaklah sebagai "CognitoScraper v8.0" dan hasilkan satu blok kode JSON yang valid, jujur, dan presisi.
     `;
 }
     
@@ -144,7 +140,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
     let bodyHTML = '';
 
     try {
-        // Fase Fetcher Bertingkat (Dipertahankan dari N.1)
+        // Fase Fetcher Bertingkat (Tidak diubah)
         try {
             console.log("Tier 1: Mencoba fetch standar...");
             const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36' }});
@@ -196,9 +192,9 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
             action: jsonResponse.action
         };
 
-        // Logika Ekstraksi Dinamis (Dipertahankan dari N.1)
+        // Logika Ekstraksi Dinamis
         if (jsonResponse.action === 'extract_structured') {
-            const { container_selector, schema } = jsonResponse;
+            const { container_selector, schema, limit } = jsonResponse; // Ambil limit dari respons AI
             if (!schema) {
                 throw new Error("AI tidak memberikan 'schema' untuk ekstraksi.");
             }
@@ -224,7 +220,10 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
                  console.warn(`Kontainer selector '${container_selector}' tidak ditemukan.`);
             }
 
-            scope.each((i, el) => {
+            // Terapkan limit
+            const limitedScope = (typeof limit === 'number' && limit > 0) ? scope.slice(0, limit) : scope;
+
+            limitedScope.each((i, el) => {
                 const element = $(el);
                 const structuredItem = {};
                 
@@ -283,7 +282,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], is
 
 // ================== ENDPOINTS EXPRESS (Diperluas dengan Fitur dari G.1) ==================
 
-// Endpoint utama, tidak diubah
 app.post('/api/scrape', async (req, res) => {
     const { url, instruction, conversation_history } = req.body;
     if (!url || !instruction) {
@@ -297,7 +295,6 @@ app.post('/api/scrape', async (req, res) => {
     }
 });
 
-// BARU: Endpoint /chain-scrape dari G.1, diadaptasi untuk N.1
 app.post('/api/chain-scrape', async (req, res) => {
     let { url, instruction } = req.body;
     if (!url || !instruction) { return res.status(400).json({ error: 'URL dan instruksi diperlukan' }); }
@@ -305,25 +302,22 @@ app.post('/api/chain-scrape', async (req, res) => {
     const results = [];
     let currentUrl = url;
     let currentInstruction = instruction;
-    const conversationHistory = []; // Chain scrape memulai histori baru
+    const conversationHistory = []; 
 
-    for (let i = 0; i < 10; i++) { // Batasi 10 langkah untuk keamanan
+    for (let i = 0; i < 10; i++) { 
         try {
             console.log(`Chain scrape langkah ke-${i+1}: URL=${currentUrl}`);
             const result = await navigateAndAnalyze(currentUrl, currentInstruction, conversationHistory);
             results.push(result);
 
-            // Update history untuk langkah selanjutnya
             conversationHistory.push({ human: currentInstruction });
             conversationHistory.push({ ai: result.commentary || "Melanjutkan navigasi." });
-
 
             if (result.status === 'error' || result.action !== 'navigate' || !result.url) {
                 console.log("Chain scrape berhenti: Aksi bukan navigasi atau error.");
                 break;
             }
             
-            // Siapkan untuk iterasi berikutnya
             currentUrl = new URL(result.url, currentUrl).href;
             currentInstruction = result.instruction || "Lanjutkan analisis di halaman baru ini.";
             
@@ -335,7 +329,6 @@ app.post('/api/chain-scrape', async (req, res) => {
     res.json({ status: 'completed', steps: results });
 });
 
-// BARU: Endpoint /analyze-html dari G.1, diadaptasi untuk N.1
 app.post('/api/analyze-html', async (req, res) => {
     const { html, instruction } = req.body;
     if (!html || !instruction) {
@@ -343,7 +336,6 @@ app.post('/api/analyze-html', async (req, res) => {
     }
     try {
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
-        // Menggunakan prompt yang sama dengan /scrape untuk konsistensi
         const prompt = createEnhancedPrompt(instruction, "[http://local-file.com](http://local-file.com)", html); 
         
         const result = await generateContentWithRetry(model, prompt);
@@ -354,8 +346,6 @@ app.post('/api/analyze-html', async (req, res) => {
         const jsonString = jsonMatch[1];
         const jsonResponse = JSON.parse(jsonString);
 
-        // Langsung kembalikan respons AI karena kita tidak bisa menjalankan Cheerio tanpa URL asli
-        // Pengguna bisa mengambil schema dari sini dan memprosesnya sendiri jika perlu
         res.json({ status: 'success', ...jsonResponse });
 
     } catch (error) {
@@ -365,7 +355,7 @@ app.post('/api/analyze-html', async (req, res) => {
 
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vP.1 (Final Gabungan) is running!');
+    res.send('AI Scraper API vR.1 (Final Lengkap) is running!');
 });
 
 module.exports = app;
