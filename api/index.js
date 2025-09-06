@@ -1,5 +1,5 @@
-// api/index.js (Versi X.1 - Manajemen Sesi)
-// Menambahkan logika untuk membaca, menyuntikkan, dan menyimpan cookie sesi di Supabase.
+// api/index.js (Versi X.2 - Manajemen User-Agent Dinamis)
+// Menambahkan logika untuk menerima dan menggunakan User-Agent kustom dari klien.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -32,7 +32,7 @@ puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/webgl.vendor')())
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi X.1 - Manajemen Sesi)...');
+console.log('Menginisialisasi server (Versi X.2 - Manajemen User-Agent Dinamis)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -172,11 +172,15 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, conversationHis
     `;
 }
     
-async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
+async function navigateAndAnalyze(url, instruction, conversationHistory = [], userAgent = null) {
     let browser = null;
     let page = null;
+    
+    // --- BARU: Mendefinisikan User-Agent ---
+    const defaultUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36';
+    const finalUserAgent = userAgent || defaultUserAgent;
 
-    // --- LANGKAH BARU: Manajemen Sesi ---
+    // --- LANGKAH MANAJEMEN SESI (Tidak diubah) ---
     const session_key = new URL(url).hostname;
     let savedCookies = [];
     try {
@@ -205,8 +209,8 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
 
         // Fase Fetcher Bertingkat (Tier 1)
         try {
-            console.log("Tier 1: Mencoba fetch standar...");
-            const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36' }});
+            console.log(`Tier 1: Mencoba fetch standar dengan User-Agent: ${finalUserAgent}`);
+            const response = await fetch(url, { headers: { 'User-Agent': finalUserAgent }});
             if (!response.ok) throw new Error(`Fetch gagal: ${response.status}`);
             const tempHtml = await response.text();
             
@@ -228,7 +232,11 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
 
             page = await browser.newPage();
 
-            // --- LANGKAH BARU: Suntikkan Cookie ---
+            // --- BARU: Mengatur User-Agent untuk Puppeteer ---
+            await page.setUserAgent(finalUserAgent);
+            console.log(`Puppeteer User-Agent diatur ke: ${finalUserAgent}`);
+
+            // --- LANGKAH SUNTIKKAN COOKIE (Tidak diubah) ---
             if (savedCookies.length > 0) {
                 console.log("Menyuntikkan cookie ke browser...");
                 await page.setCookie(...savedCookies);
@@ -257,7 +265,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
             finalHtml = await page.content();
             console.log("Tier 2: Sukses! Konten final telah didapat.");
 
-            // --- LANGKAH BARU: Simpan Sesi ---
+            // --- LANGKAH SIMPAN SESI (Tidak diubah) ---
             console.log("Mengambil cookie sesi saat ini dari browser...");
             const currentCookies = await page.cookies();
             if (currentCookies && currentCookies.length > 0) {
@@ -343,15 +351,15 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
     }
 }
 
-// ================== ENDPOINTS EXPRESS (Tidak diubah) ==================
+// ================== ENDPOINTS EXPRESS (DIMODIFIKASI) ==================
 
 app.post('/api/scrape', async (req, res) => {
-    const { url, instruction, conversation_history } = req.body;
+    const { url, instruction, conversation_history, userAgent } = req.body;
     if (!url || !instruction) {
         return res.status(400).json({ error: 'URL dan instruksi diperlukan' });
     }
     try {
-        const result = await navigateAndAnalyze(url, instruction, conversation_history);
+        const result = await navigateAndAnalyze(url, instruction, conversation_history, userAgent);
         res.json(result);
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
@@ -359,7 +367,7 @@ app.post('/api/scrape', async (req, res) => {
 });
 
 app.post('/api/chain-scrape', async (req, res) => {
-    let { url, instruction } = req.body;
+    let { url, instruction, userAgent } = req.body;
     if (!url || !instruction) { return res.status(400).json({ error: 'URL dan instruksi diperlukan' }); }
     
     const results = [];
@@ -369,7 +377,7 @@ app.post('/api/chain-scrape', async (req, res) => {
 
     for (let i = 0; i < 10; i++) { 
         try {
-            const result = await navigateAndAnalyze(currentUrl, currentInstruction, conversationHistory);
+            const result = await navigateAndAnalyze(currentUrl, currentInstruction, conversationHistory, userAgent);
             results.push(result);
             conversationHistory.push({ human: currentInstruction });
             conversationHistory.push({ ai: result.commentary || "Melanjutkan navigasi." });
@@ -410,8 +418,7 @@ app.post('/api/analyze-html', async (req, res) => {
 
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vX.1 (Manajemen Sesi) is running!');
+    res.send('AI Scraper API vX.2 (Manajemen User-Agent Dinamis) is running!');
 });
 
 module.exports = app;
-
