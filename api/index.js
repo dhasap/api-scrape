@@ -1,5 +1,5 @@
-// api/index.js (Versi X.2 - Manajemen User-Agent Dinamis)
-// Menambahkan logika untuk menerima dan menggunakan User-Agent kustom dari klien.
+// api/index.js (Versi X.3 - Otak AI Cerdas)
+// Versi final dengan prompt AI cerdas, tanpa logika proxy di backend.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -32,7 +32,7 @@ puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/webgl.vendor')())
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi X.2 - Manajemen User-Agent Dinamis)...');
+console.log('Menginisialisasi server (Versi X.3 - Otak AI Cerdas)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -79,8 +79,6 @@ function createReconPrompt(skeletalHtml) {
     1.  **ANALISIS STRUKTUR:** Pindai keseluruhan HTML yang diberikan. Abaikan header, footer, sidebar, dan menu navigasi. Fokus pada area konten utama di tengah halaman.
     2.  **IDENTIFIKASI PETUNJUK:** Cari petunjuk dalam nama class atau ID yang mengindikasikan sebuah daftar atau area konten utama. Petunjuk umum meliputi kata-kata seperti: "list", "posts", "items", "main", "content", "grid", "latest", "results".
     3.  **PEMILIHAN KANDIDAT TERBAIK:** Dari beberapa kemungkinan, pilih SATU selector yang paling spesifik namun tetap cukup umum untuk menjadi kontainer utama. Hindari selector yang terlalu spesifik yang mungkin hanya menargetkan satu item.
-        -   Contoh BAIK: \`.latest-updates .post-list\`, \`#main-content .product-grid\`, \`.bixbox.list-update\`
-        -   Contoh KURANG BAIK: \`.post-item:nth-child(1)\` (terlalu spesifik), \`div\` (terlalu umum).
     4.  **GENERASI JSON FINAL:** Bangun objek JSON dengan sangat hati-hati.
     ### ATURAN KETAT ###
     -   **ATURAN #0 (OUTPUT FINAL):** Respons Anda HARUS berisi SATU blok kode JSON yang valid dan HANYA berisi satu kunci: \`"dynamic_container_selector"\`. Jangan sertakan penalaran atau komentar di dalam JSON.
@@ -94,7 +92,6 @@ function createReconPrompt(skeletalHtml) {
     ### DATA UNTUK DIPROSES ###
     -   **HTML Kerangka Halaman untuk Dianalisis:**
         ${skeletalHtml}
-    Sekarang, laksanakan misi intelijen Anda dan hasilkan satu blok JSON yang valid.
     `;
 }
 
@@ -119,7 +116,7 @@ async function getDynamicContentSelector(skeletalHtml) {
 }
 
 
-// Prompt AI Ekstraksi (v8.0 - Mode Fotografer dengan Limiter) - Tidak diubah
+// --- PROMPT AI CERDAS (Versi 9.0) ---
 function createEnhancedPrompt(instruction, currentURL, bodyHTML, conversationHistory = []) {
     const historyText = conversationHistory.map(turn => {
         if (turn.human) return `Human: ${turn.human}`;
@@ -129,46 +126,66 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, conversationHis
 
     return `
     ### PROFIL DAN MISI UTAMA ###
-    Anda adalah "CognitoScraper v8.0 - Mode Fotografer", agen AI yang mengekstrak data dengan kejujuran absolut dan presisi. Misi Anda adalah mengubah instruksi bahasa manusia menjadi "resep" JSON yang fleksibel, termasuk memahami batasan jumlah (limit) yang diminta.
-    ### FILOSOFI UTAMA: "KEJUJURAN DATA" ###
-    1.  **NAMA FIELD YANG JUJUR:** Kunci (key) dalam JSON output Anda HARUS merefleksikan nama class atau atribut yang paling relevan dari elemen target. JANGAN menerjemahkan atau membuat nama sendiri (misal: gunakan "title" bukan "judul_komik").
-    2.  **DATA MENTAH SEBAGAI DEFAULT:** Selalu gunakan \`type: 'html'\` sebagai DEFAULT. HANYA gunakan \`type: 'text'\`, \`'href'\`, atau \`'src'\` jika pengguna secara EKSPLISIT memintanya.
-    ### PROSES BERPIKIR WAJIB (STEP-BY-STEP) ###
-    1.  **ANALISIS TUJUAN:** Pahami instruksi pengguna ("${instruction}").
-    2.  **ANALISIS BATASAN (LIMIT):** Periksa instruksi pengguna untuk angka spesifik (misal: "**5** komik", "**1** item", "**10** judul teratas"). Jika ada, catat angka ini sebagai batasan.
-    3.  **IDENTIFIKASI KONTAINER:** Jika pengguna meminta daftar, temukan selector CSS untuk "kartu" yang berulang.
-    4.  **BUAT SKEMA JUJUR (\`schema\`):** Pindai HTML dan buat "peta" data. Untuk setiap data yang diminta:
-        a.  Temukan elemennya dan gunakan class/atributnya sebagai **nama kunci (key)**.
-        b.  Tentukan selector CSS yang akurat.
-        c.  Tentukan tipenya (default \`'html'\`).
-    5.  **KONSTRUKSI PENALARAN (\`reasoning\`):** Jelaskan mengapa Anda memilih selector, skema, dan limit tersebut.
-    6.  **GENERASI JSON FINAL:** Bangun objek JSON dengan hati-hati.
-    ### ATURAN KETAT ###
-    -   **ATURAN #0 (OUTPUT FINAL):** Respons Anda HARUS berisi SATU blok kode JSON yang valid.
-    -   **ATURAN #1 (KUNCI/KEY JUJUR):** NAMA KUNCI DI DALAM \`schema\` HARUS DIAMBIL DARI CLASS/ATRIBUT HTML ASLI. DILARANG MENERJEMAHKAN.
-    -   **ATURAN #2 (DEFAULT HTML):** SELALU prioritaskan \`type: 'html'\`.
-    -   **ATURAN #3 (BATASAN/LIMIT):** Jika instruksi pengguna mengandung angka yang jelas (misal: "scrape **1** komik", "ambil **5** item"), Anda WAJIB menyertakan field \`"limit": angka\` dalam JSON Anda. Jika tidak ada angka yang disebutkan, JANGAN sertakan field \`limit\`.
-    -   **ATURAN #4 (GUNAKAN \`extract_structured\`):** Untuk SEMUA permintaan ekstraksi data, gunakan \`action: "extract_structured"\`.
-    ### STRUKTUR JSON YANG WAJIB ANDA HASILKAN ###
+    Anda adalah "CognitoAgent v9.0", seorang agen AI cerdas dengan DUA kemampuan utama: Navigasi dan Ekstraksi. Misi Anda adalah memahami niat pengguna secara akurat dan memilih tindakan yang paling tepat berdasarkan analisis mendalam.
+
+    ### PROSES BERPIKIR WAJIB (WAJIB DIIKUTI SECARA BERURUTAN) ###
+    1.  **ANALISIS NIAT PENGGUNA (LANGKAH KRITIS):** Ini adalah langkah PALING PENTING. Baca instruksi terakhir pengguna ("${instruction}") dan tentukan SATU dari tiga kemungkinan niat utama dengan prioritas sebagai berikut:
+        * **NIAT #1: NAVIGASI (PRIORITAS TERTINGGI):** Apakah pengguna ingin PINDAH ke halaman lain? Cari kata kunci eksplisit seperti "klik", "pindah ke", "buka halaman", "pergi ke", "navigasi ke", "menu", "halaman popular", "next page", "halaman selanjutnya". Jika niat ini terdeteksi, Anda WAJIB menghasilkan \`action: "navigate"\`. JANGAN melakukan scraping meskipun ada data yang bisa diambil.
+        * **NIAT #2: EKSTRAKSI DATA:** Apakah pengguna ingin MENGAMBIL atau MENGUMPULKAN INFORMASI dari halaman SAAT INI? Cari kata kunci seperti "scrape", "ambil data", "dapatkan daftar", "ekstrak", "cari judul", "apa saja isinya". Jika tidak ada niat navigasi yang terdeteksi, dan ada permintaan data, maka tujuan Anda adalah menghasilkan \`action: "extract_structured"\`.
+        * **NIAT #3: RESPON UMUM:** Apakah pengguna hanya bertanya, memberikan pernyataan, atau instruksinya tidak jelas? Jika tidak ada niat navigasi atau ekstraksi yang jelas, tujuan Anda adalah menghasilkan \`action: "respond"\` untuk memberikan jawaban atau meminta klarifikasi.
+
+    2.  **EKSEKUSI BERDASARKAN NIAT:**
+
+        * **JIKA NIAT = NAVIGASI:**
+            a.  Pindai keseluruhan HTML untuk menemukan elemen tautan (\`<a>\`) yang teks atau atributnya paling cocok dengan instruksi pengguna (misal: teks "Popular" atau "Next").
+            b.  Ekstrak nilai atribut \`href\` dari tautan tersebut. Jika tautan tidak ditemukan, laporkan dalam \`reasoning\` dan pilih \`action: "respond"\`.
+            c.  Buat objek JSON dengan \`action: "navigate"\`. Sertakan \`url\` yang ditemukan dan buat instruksi lanjutan yang relevan, seperti "analisa halaman baru ini".
+
+        * **JIKA NIAT = EKSTRAKSI DATA:**
+            a.  Ikuti "Filosofi Kejujuran Data": Nama kunci (key) dalam skema HARUS diambil dari nama class/atribut HTML yang paling relevan. Jangan menerjemahkan (misal: gunakan "post-title", bukan "judul_artikel").
+            b.  Default tipe ekstraksi adalah \`'html'\`. Hanya gunakan \`'text'\`, \`'href'\`, atau \`'src'\` jika diminta secara eksplisit.
+            c.  Identifikasi selector CSS untuk kontainer item yang berulang jika pengguna meminta daftar.
+            d.  Jika pengguna menyebutkan batasan jumlah (misal: "5 item teratas"), Anda WAJIB menyertakan field \`"limit": 5\` dalam JSON Anda.
+            e.  Buat objek JSON dengan \`action: "extract_structured"\`.
+
+    ### ATURAN KETAT YANG TIDAK BOLEH DILANGGAR ###
+    -   **ATURAN #0 (OUTPUT FINAL):** Respons Anda HARUS berisi SATU blok kode JSON yang valid dan HANYA itu.
+    -   **ATURAN #1 (HIERARKI NIAT):** Analisis NIAT NAVIGASI selalu didahulukan. Jika ada keraguan antara navigasi dan ekstraksi, PILIH NAVIGASI.
+    -   **ATURAN #2 (SATU AKSI):** Hanya pilih SATU nilai untuk kunci \`action\`: \`"navigate"\`, \`"extract_structured"\`, atau \`"respond"\`.
+
+    ### CONTOH OUTPUT BERDASARKAN NIAT ###
+
+    **Contoh untuk NIAT NAVIGASI (Perintah: "pindah ke halaman popular"):**
     \`\`\`json
     {
-      "reasoning": "Penjelasan detail tentang pemilihan selector, skema jujur, dan limit jika ada.",
-      "commentary": "Komentar ramah untuk pengguna.",
+      "reasoning": "Niat pengguna terdeteksi sebagai NAVIGASI karena perintah 'pindah ke halaman popular'. Saya menemukan elemen \`<a>\` dengan teks 'Popular' yang mengarah ke '/series/popular' dan akan melakukan navigasi.",
+      "commentary": "Baik, saya akan menavigasi ke halaman Popular sekarang.",
+      "action": "navigate",
+      "url": "/series/popular",
+      "instruction": "Setelah berada di halaman popular, analisa dan berikan saran scraping."
+    }
+    \`\`\`
+
+    **Contoh untuk NIAT EKSTRAKSI (Perintah: "ambil 5 judul teratas"):**
+    \`\`\`json
+    {
+      "reasoning": "Niat pengguna adalah EKSTRAKSI DATA karena perintah 'ambil 5 judul teratas'. Saya mengidentifikasi kontainer '.list-update_item' dan membuat skema untuk mengambil judul dan gambar dengan batas 5 item.",
+      "commentary": "Siap! Berikut adalah 5 item teratas dari halaman ini.",
       "action": "extract_structured",
-      "limit": 5, // (Opsional) HANYA jika pengguna menyebutkan angka
+      "limit": 5,
       "container_selector": ".list-update_item",
       "schema": {
-        "title": { "selector": "h3.title", "type": "html" },
-        "image": { "selector": ".thumb img", "type": "html" }
+        "title": { "selector": "h3.title", "type": "text" },
+        "image_url": { "selector": ".thumb img", "type": "src" }
       }
     }
     \`\`\`
+
     ### DATA UNTUK DIPROSES ###
     -   **Instruksi Pengguna Terakhir:** "${instruction}"
     -   **URL Saat Ini:** "${currentURL}"
     -   **HTML Halaman untuk Dianalisis:**
         ${bodyHTML}
-    Sekarang, bertindaklah sebagai "CognitoScraper v8.0" dan hasilkan satu blok kode JSON yang valid, jujur, dan presisi.
     `;
 }
     
@@ -176,7 +193,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], us
     let browser = null;
     let page = null;
     
-    // --- BARU: Mendefinisikan User-Agent ---
+    // --- Mendefinisikan User-Agent ---
     const defaultUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36';
     const finalUserAgent = userAgent || defaultUserAgent;
 
@@ -191,7 +208,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], us
             .eq('id', session_key)
             .single();
 
-        if (error && error.code !== 'PGRST116') { // Abaikan error "baris tidak ditemukan"
+        if (error && error.code !== 'PGRST116') {
             console.warn("Gagal membaca sesi dari Supabase:", error.message);
         } else if (data && data.cookies) {
             savedCookies = data.cookies;
@@ -202,8 +219,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], us
     } catch (dbError) {
         console.error("Error saat mengakses Supabase untuk membaca sesi:", dbError);
     }
-    // --- AKHIR LANGKAH MANAJEMEN SESI ---
-
+    
     try {
         let finalHtml = ''; 
 
@@ -231,18 +247,14 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], us
             });
 
             page = await browser.newPage();
-
-            // --- BARU: Mengatur User-Agent untuk Puppeteer ---
             await page.setUserAgent(finalUserAgent);
             console.log(`Puppeteer User-Agent diatur ke: ${finalUserAgent}`);
 
-            // --- LANGKAH SUNTIKKAN COOKIE (Tidak diubah) ---
             if (savedCookies.length > 0) {
                 console.log("Menyuntikkan cookie ke browser...");
                 await page.setCookie(...savedCookies);
                 console.log("✓ Cookie berhasil disuntikkan.");
             }
-            // --- AKHIR LANGKAH SUNTIKKAN COOKIE ---
 
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
             
@@ -265,7 +277,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], us
             finalHtml = await page.content();
             console.log("Tier 2: Sukses! Konten final telah didapat.");
 
-            // --- LANGKAH SIMPAN SESI (Tidak diubah) ---
             console.log("Mengambil cookie sesi saat ini dari browser...");
             const currentCookies = await page.cookies();
             if (currentCookies && currentCookies.length > 0) {
@@ -282,7 +293,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], us
             } else {
                 console.log("Tidak ada cookie untuk disimpan dari sesi ini.");
             }
-            // --- AKHIR LANGKAH SIMPAN SESI ---
         }
     
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
@@ -351,7 +361,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = [], us
     }
 }
 
-// ================== ENDPOINTS EXPRESS (DIMODIFIKASI) ==================
+// ================== ENDPOINTS EXPRESS ==================
 
 app.post('/api/scrape', async (req, res) => {
     const { url, instruction, conversation_history, userAgent } = req.body;
@@ -418,7 +428,8 @@ app.post('/api/analyze-html', async (req, res) => {
 
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vX.2 (Manajemen User-Agent Dinamis) is running!');
+    res.send('AI Scraper API vX.3 (Otak AI Cerdas) is running!');
 });
 
 module.exports = app;
+
