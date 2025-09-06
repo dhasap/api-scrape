@@ -1,5 +1,5 @@
-// api/index.js (Versi W.1 - Jeda Waktu Cloudflare)
-// Menambahkan jeda waktu 5 detik untuk memberi kesempatan Cloudflare menyelesaikan validasi.
+// api/index.js (Versi X.1 - Manajemen Sesi)
+// Menambahkan logika untuk membaca, menyuntikkan, dan menyimpan cookie sesi di Supabase.
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -32,7 +32,7 @@ puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/webgl.vendor')())
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // --- Konfigurasi ---
-console.log('Menginisialisasi server (Versi W.1 - Jeda Waktu Cloudflare)...');
+console.log('Menginisialisasi server (Versi X.1 - Manajemen Sesi)...');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_MODEL_NAME = "gemini-1.5-flash";
 
@@ -75,7 +75,6 @@ function createReconPrompt(skeletalHtml) {
     return `
     ### PROFIL DAN MISI UTAMA ###
     Anda adalah "ReconAI", seorang ahli arsitektur front-end yang sangat berpengalaman. Misi Anda HANYA SATU: menganalisis kerangka HTML dari sebuah halaman web dan mengidentifikasi **satu selector CSS** yang paling mungkin menjadi **kontainer utama untuk konten dinamis** yang akan dimuat oleh JavaScript.
-
     ### PROSES BERPIKIR WAJIB (STEP-BY-STEP) ###
     1.  **ANALISIS STRUKTUR:** Pindai keseluruhan HTML yang diberikan. Abaikan header, footer, sidebar, dan menu navigasi. Fokus pada area konten utama di tengah halaman.
     2.  **IDENTIFIKASI PETUNJUK:** Cari petunjuk dalam nama class atau ID yang mengindikasikan sebuah daftar atau area konten utama. Petunjuk umum meliputi kata-kata seperti: "list", "posts", "items", "main", "content", "grid", "latest", "results".
@@ -83,22 +82,18 @@ function createReconPrompt(skeletalHtml) {
         -   Contoh BAIK: \`.latest-updates .post-list\`, \`#main-content .product-grid\`, \`.bixbox.list-update\`
         -   Contoh KURANG BAIK: \`.post-item:nth-child(1)\` (terlalu spesifik), \`div\` (terlalu umum).
     4.  **GENERASI JSON FINAL:** Bangun objek JSON dengan sangat hati-hati.
-
     ### ATURAN KETAT ###
     -   **ATURAN #0 (OUTPUT FINAL):** Respons Anda HARUS berisi SATU blok kode JSON yang valid dan HANYA berisi satu kunci: \`"dynamic_container_selector"\`. Jangan sertakan penalaran atau komentar di dalam JSON.
     -   **ATURAN #1 (KEJUJURAN):** Jika Anda sama sekali tidak bisa menemukan kandidat yang kuat, kembalikan \`null\` sebagai nilai selector.
-    
     ### STRUKTUR JSON YANG WAJIB ANDA HASILKAN ###
     \`\`\`json
     {
       "dynamic_container_selector": ".selector-css-terbaik-yang-anda-temukan"
     }
     \`\`\`
-
     ### DATA UNTUK DIPROSES ###
     -   **HTML Kerangka Halaman untuk Dianalisis:**
         ${skeletalHtml}
-
     Sekarang, laksanakan misi intelijen Anda dan hasilkan satu blok JSON yang valid.
     `;
 }
@@ -116,38 +111,16 @@ async function getDynamicContentSelector(skeletalHtml) {
         }
         const jsonString = jsonMatch[1];
         const jsonResponse = JSON.parse(jsonString);
-        return jsonResponse.dynamic_container_selector || 'body'; // Fallback jika selector null
+        return jsonResponse.dynamic_container_selector || 'body';
     } catch (error) {
         console.error("Gagal menjalankan Misi Pengintaian AI:", error);
-        return 'body'; // Fallback jika terjadi error
+        return 'body';
     }
 }
 
 
 // Prompt AI Ekstraksi (v8.0 - Mode Fotografer dengan Limiter) - Tidak diubah
-function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt = false, memory = null, conversationHistory = []) {
-    // ... (kode tidak diubah, tetap lengkap dan detail)
-    if (recoveryAttempt && memory) {
-        return `
-        PERHATIAN: ANDA DALAM MODE PEMULIHAN DARURAT.
-        Misi Anda adalah menemukan selector CSS baru.
-        **KONTEKS:**
-        - Instruksi: "${instruction}"
-        - Selector GAGAL: "${memory.selector}"
-        **PETUNJUK ELEMEN:**
-        - Tag: '<${memory.tagName}>'
-        - Teks: "${memory.textSample}"
-        - Atribut: ${memory.attributes.join(', ')}
-        **ATURAN:**
-        1.  Fokus HANYA menemukan selector baru.
-        2.  Analisis HTML di bawah.
-        3.  Temukan elemen yang paling cocok dengan petunjuk.
-        4.  Respons HANYA berupa JSON: {"new_selector": "selector_css_baru_yang_stabil"}
-        **HTML UNTUK DIANALISIS:**
-        ${bodyHTML}
-        `;
-    }
-
+function createEnhancedPrompt(instruction, currentURL, bodyHTML, conversationHistory = []) {
     const historyText = conversationHistory.map(turn => {
         if (turn.human) return `Human: ${turn.human}`;
         if (turn.ai) return `You: ${turn.ai}`;
@@ -157,11 +130,9 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
     return `
     ### PROFIL DAN MISI UTAMA ###
     Anda adalah "CognitoScraper v8.0 - Mode Fotografer", agen AI yang mengekstrak data dengan kejujuran absolut dan presisi. Misi Anda adalah mengubah instruksi bahasa manusia menjadi "resep" JSON yang fleksibel, termasuk memahami batasan jumlah (limit) yang diminta.
-
     ### FILOSOFI UTAMA: "KEJUJURAN DATA" ###
     1.  **NAMA FIELD YANG JUJUR:** Kunci (key) dalam JSON output Anda HARUS merefleksikan nama class atau atribut yang paling relevan dari elemen target. JANGAN menerjemahkan atau membuat nama sendiri (misal: gunakan "title" bukan "judul_komik").
     2.  **DATA MENTAH SEBAGAI DEFAULT:** Selalu gunakan \`type: 'html'\` sebagai DEFAULT. HANYA gunakan \`type: 'text'\`, \`'href'\`, atau \`'src'\` jika pengguna secara EKSPLISIT memintanya.
-
     ### PROSES BERPIKIR WAJIB (STEP-BY-STEP) ###
     1.  **ANALISIS TUJUAN:** Pahami instruksi pengguna ("${instruction}").
     2.  **ANALISIS BATASAN (LIMIT):** Periksa instruksi pengguna untuk angka spesifik (misal: "**5** komik", "**1** item", "**10** judul teratas"). Jika ada, catat angka ini sebagai batasan.
@@ -172,14 +143,12 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
         c.  Tentukan tipenya (default \`'html'\`).
     5.  **KONSTRUKSI PENALARAN (\`reasoning\`):** Jelaskan mengapa Anda memilih selector, skema, dan limit tersebut.
     6.  **GENERASI JSON FINAL:** Bangun objek JSON dengan hati-hati.
-
     ### ATURAN KETAT ###
     -   **ATURAN #0 (OUTPUT FINAL):** Respons Anda HARUS berisi SATU blok kode JSON yang valid.
     -   **ATURAN #1 (KUNCI/KEY JUJUR):** NAMA KUNCI DI DALAM \`schema\` HARUS DIAMBIL DARI CLASS/ATRIBUT HTML ASLI. DILARANG MENERJEMAHKAN.
     -   **ATURAN #2 (DEFAULT HTML):** SELALU prioritaskan \`type: 'html'\`.
     -   **ATURAN #3 (BATASAN/LIMIT):** Jika instruksi pengguna mengandung angka yang jelas (misal: "scrape **1** komik", "ambil **5** item"), Anda WAJIB menyertakan field \`"limit": angka\` dalam JSON Anda. Jika tidak ada angka yang disebutkan, JANGAN sertakan field \`limit\`.
     -   **ATURAN #4 (GUNAKAN \`extract_structured\`):** Untuk SEMUA permintaan ekstraksi data, gunakan \`action: "extract_structured"\`.
-
     ### STRUKTUR JSON YANG WAJIB ANDA HASILKAN ###
     \`\`\`json
     {
@@ -194,13 +163,11 @@ function createEnhancedPrompt(instruction, currentURL, bodyHTML, recoveryAttempt
       }
     }
     \`\`\`
-
     ### DATA UNTUK DIPROSES ###
     -   **Instruksi Pengguna Terakhir:** "${instruction}"
     -   **URL Saat Ini:** "${currentURL}"
     -   **HTML Halaman untuk Dianalisis:**
         ${bodyHTML}
-
     Sekarang, bertindaklah sebagai "CognitoScraper v8.0" dan hasilkan satu blok kode JSON yang valid, jujur, dan presisi.
     `;
 }
@@ -209,8 +176,32 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
     let browser = null;
     let page = null;
 
+    // --- LANGKAH BARU: Manajemen Sesi ---
+    const session_key = new URL(url).hostname;
+    let savedCookies = [];
     try {
-        let finalHtml = ''; // Variabel untuk menyimpan HTML yang sudah lengkap
+        console.log(`Membaca sesi untuk '${session_key}' dari Supabase...`);
+        const { data, error } = await supabase
+            .from('sessions')
+            .select('cookies')
+            .eq('id', session_key)
+            .single();
+
+        if (error && error.code !== 'PGRST116') { // Abaikan error "baris tidak ditemukan"
+            console.warn("Gagal membaca sesi dari Supabase:", error.message);
+        } else if (data && data.cookies) {
+            savedCookies = data.cookies;
+            console.log(`✓ Sesi ditemukan, ${savedCookies.length} cookie akan disuntikkan.`);
+        } else {
+            console.log("Tidak ada sesi sebelumnya yang ditemukan untuk domain ini.");
+        }
+    } catch (dbError) {
+        console.error("Error saat mengakses Supabase untuk membaca sesi:", dbError);
+    }
+    // --- AKHIR LANGKAH MANAJEMEN SESI ---
+
+    try {
+        let finalHtml = ''; 
 
         // Fase Fetcher Bertingkat (Tier 1)
         try {
@@ -218,7 +209,7 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
             const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36' }});
             if (!response.ok) throw new Error(`Fetch gagal: ${response.status}`);
             const tempHtml = await response.text();
-            // Jika halaman tidak bergantung pada JS, kita bisa langsung anggap ini final
+            
             if (tempHtml.length > 500 && !tempHtml.toLowerCase().includes("enable javascript")) {
                 finalHtml = tempHtml;
                 console.log("Tier 1: Sukses! Situs tampaknya statis.");
@@ -236,34 +227,58 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
             });
 
             page = await browser.newPage();
+
+            // --- LANGKAH BARU: Suntikkan Cookie ---
+            if (savedCookies.length > 0) {
+                console.log("Menyuntikkan cookie ke browser...");
+                await page.setCookie(...savedCookies);
+                console.log("✓ Cookie berhasil disuntikkan.");
+            }
+            // --- AKHIR LANGKAH SUNTIKKAN COOKIE ---
+
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
             
-            // --- SOLUSI: JEDA WAKTU UNTUK CLOUDFLARE ---
-            console.log("Memberi waktu 5 detik bagi Cloudflare untuk menyelesaikan pemeriksaan...");
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Jeda 5 detik
+            console.log("Memberi waktu 10 detik bagi Cloudflare untuk menyelesaikan pemeriksaan...");
+            await new Promise(resolve => setTimeout(resolve, 10000));
             console.log("Waktu tunggu selesai, melanjutkan proses.");
 
-            // --- LANGKAH 1: MISI PENGINTAIAN ---
             const initialHtml = await page.content();
-            console.log("Menjalankan Misi Pengintaian untuk menemukan kontainer konten dinamis...");
+            console.log("Menjalankan Misi Pengintaian...");
             const dynamicSelector = await getDynamicContentSelector(initialHtml);
             
             if (dynamicSelector && dynamicSelector !== 'body') {
                  console.log(`AI Navigator merekomendasikan untuk menunggu selector: '${dynamicSelector}'`);
                  await page.waitForSelector(dynamicSelector, { timeout: 30000 });
-                 console.log("Konten dinamis terdeteksi dan telah dimuat.");
+                 console.log("Konten dinamis terdeteksi.");
             } else {
-                console.log("AI Navigator tidak menemukan selector spesifik, akan melanjutkan dengan konten yang ada.");
+                console.log("AI Navigator tidak menemukan selector spesifik.");
             }
 
-            // --- LANGKAH 2: EKSEKUSI ---
-            finalHtml = await page.content(); // Ambil HTML final setelah menunggu
+            finalHtml = await page.content();
             console.log("Tier 2: Sukses! Konten final telah didapat.");
+
+            // --- LANGKAH BARU: Simpan Sesi ---
+            console.log("Mengambil cookie sesi saat ini dari browser...");
+            const currentCookies = await page.cookies();
+            if (currentCookies && currentCookies.length > 0) {
+                console.log(`Menyimpan/memperbarui ${currentCookies.length} cookie untuk sesi '${session_key}'...`);
+                const { error: upsertError } = await supabase
+                    .from('sessions')
+                    .upsert({ id: session_key, cookies: currentCookies, updated_at: new Date().toISOString() });
+                
+                if (upsertError) {
+                    console.error("Gagal menyimpan sesi ke Supabase:", upsertError.message);
+                } else {
+                    console.log("✓ Sesi berhasil disimpan ke Supabase.");
+                }
+            } else {
+                console.log("Tidak ada cookie untuk disimpan dari sesi ini.");
+            }
+            // --- AKHIR LANGKAH SIMPAN SESI ---
         }
     
-        // Panggil AI Ekstraksi dengan HTML yang sudah lengkap
         const model = genAI.getGenerativeModel({ model: AI_MODEL_NAME });
-        const finalPrompt = createEnhancedPrompt(instruction, url, finalHtml, false, null, conversationHistory); 
+        const finalPrompt = createEnhancedPrompt(instruction, url, finalHtml, conversationHistory); 
         
         const result = await generateContentWithRetry(model, finalPrompt);
         let text = (await result.response).text();
@@ -281,7 +296,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
             action: jsonResponse.action
         };
 
-        // Logika Ekstraksi (tidak diubah, kini menggunakan finalHtml)
         if (jsonResponse.action === 'extract_structured') {
             const { container_selector, schema, limit } = jsonResponse;
             if (!schema) throw new Error("AI tidak memberikan 'schema' untuk ekstraksi.");
@@ -320,7 +334,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
         }
 
     } catch (error) {
-        // Mode pemulihan tidak diubah
         console.warn("Terjadi kesalahan:", error.message);
         throw error;
     } finally {
@@ -333,7 +346,6 @@ async function navigateAndAnalyze(url, instruction, conversationHistory = []) {
 // ================== ENDPOINTS EXPRESS (Tidak diubah) ==================
 
 app.post('/api/scrape', async (req, res) => {
-    // ... (kode tidak diubah)
     const { url, instruction, conversation_history } = req.body;
     if (!url || !instruction) {
         return res.status(400).json({ error: 'URL dan instruksi diperlukan' });
@@ -347,7 +359,6 @@ app.post('/api/scrape', async (req, res) => {
 });
 
 app.post('/api/chain-scrape', async (req, res) => {
-    // ... (kode tidak diubah)
     let { url, instruction } = req.body;
     if (!url || !instruction) { return res.status(400).json({ error: 'URL dan instruksi diperlukan' }); }
     
@@ -358,21 +369,15 @@ app.post('/api/chain-scrape', async (req, res) => {
 
     for (let i = 0; i < 10; i++) { 
         try {
-            console.log(`Chain scrape langkah ke-${i+1}: URL=${currentUrl}`);
             const result = await navigateAndAnalyze(currentUrl, currentInstruction, conversationHistory);
             results.push(result);
-
             conversationHistory.push({ human: currentInstruction });
             conversationHistory.push({ ai: result.commentary || "Melanjutkan navigasi." });
-
             if (result.status === 'error' || result.action !== 'navigate' || !result.url) {
-                console.log("Chain scrape berhenti: Aksi bukan navigasi atau error.");
                 break;
             }
-            
             currentUrl = new URL(result.url, currentUrl).href;
             currentInstruction = result.instruction || "Lanjutkan analisis di halaman baru ini.";
-            
         } catch(error) {
             results.push({ status: 'error', message: `Langkah ke-${i+1} gagal: ${error.message}` });
             break;
@@ -382,7 +387,6 @@ app.post('/api/chain-scrape', async (req, res) => {
 });
 
 app.post('/api/analyze-html', async (req, res) => {
-    // ... (kode tidak diubah)
     const { html, instruction } = req.body;
     if (!html || !instruction) {
         return res.status(400).json({ error: 'Konten HTML dan instruksi diperlukan' });
@@ -398,9 +402,7 @@ app.post('/api/analyze-html', async (req, res) => {
         
         const jsonString = jsonMatch[1];
         const jsonResponse = JSON.parse(jsonString);
-
         res.json({ status: 'success', ...jsonResponse });
-
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message, stack: error.stack });
     }
@@ -408,7 +410,7 @@ app.post('/api/analyze-html', async (req, res) => {
 
 
 app.get('/', (req, res) => {
-    res.send('AI Scraper API vW.1 (Jeda Waktu) is running!');
+    res.send('AI Scraper API vX.1 (Manajemen Sesi) is running!');
 });
 
 module.exports = app;
